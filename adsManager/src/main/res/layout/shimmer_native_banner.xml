@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:paddingTop="@dimen/_10sdp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clAd"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_80sdp"
+        android:background="@drawable/bg_border_blue">
+
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="@dimen/_5sdp"
+            >
+
+
+            <TextView
+                android:id="@+id/attribution"
+                style="@style/AdAttribution"
+                android:layout_gravity="start"
+                android:layout_marginStart="@dimen/_10sdp"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="@+id/ad_headline"
+                app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
+                app:layout_constraintTop_toTopOf="@+id/ad_headline" />
+
+
+
+            <ImageView
+                android:id="@+id/ad_app_icon"
+                android:layout_width="@dimen/_50sdp"
+                android:layout_height="@dimen/_50sdp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:foreground="@android:color/darker_gray"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+
+
+            <TextView
+                android:id="@+id/ad_headline"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="@dimen/_5sdp"
+                android:layout_weight="1"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:foreground="@android:color/darker_gray"
+                android:textColor="@color/ad_text_primary"
+                android:textSize="@dimen/_13sdp"
+                app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
+                app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
+                app:layout_constraintTop_toTopOf="@+id/ad_app_icon" />
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/ad_call_to_action"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_50sdp"
+                android:minWidth="@dimen/_45sdp"
+                android:background="@drawable/bg_square_blue"
+                android:paddingHorizontal="@dimen/_5sdp"
+                android:gravity="center"
+                android:textStyle="bold"
+                android:text="Open"
+                android:foreground="@android:color/darker_gray"
+                android:textAllCaps="false"
+                android:textColor="@color/ad_cta_text"
+                android:textSize="@dimen/_11ssp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView17"
+                style="@style/AdAttribution"
+                android:layout_marginStart="@dimen/_5sdp"
+                android:visibility="visible"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintTop_toBottomOf="@+id/ad_headline"
+                app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
+                tools:layout_editor_absoluteY="33dp" />
+
+            <TextView
+                android:id="@+id/ad_body"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="@dimen/_5sdp"
+                android:includeFontPadding="false"
+                android:maxLines="3"
+                android:foreground="@android:color/darker_gray"
+                android:text="The ultimate PDF reader Redefine your PDF reading. Make it worthwhile for your reading tool"
+                android:textColor="@color/ad_text_primary"
+                android:textSize="@dimen/_11sdp"
+                android:visibility="visible"
+                app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
+                app:layout_constraintStart_toEndOf="@+id/textView17"
+                app:layout_constraintTop_toBottomOf="@+id/ad_headline" />
+
+            <TextView
+                android:id="@+id/ad_advertiser"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:gravity="bottom"
+                android:textSize="@dimen/_9sdp"
+                android:textStyle="normal"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <RatingBar
+                android:id="@+id/ad_stars"
+                style="?android:attr/ratingBarStyleSmall"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:isIndicator="true"
+                android:numStars="5"
+                android:stepSize="0.5"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+
+            <TextView
+                android:id="@+id/ad_price"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:paddingStart="5dp"
+                android:paddingLeft="5dp"
+                android:paddingEnd="5dp"
+                android:paddingRight="5dp"
+                android:textSize="12sp"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/ad_store"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:paddingStart="5dp"
+                android:paddingLeft="5dp"
+                android:paddingEnd="5dp"
+                android:paddingRight="5dp"
+                android:textSize="12sp"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.facebook.shimmer.ShimmerFrameLayout>

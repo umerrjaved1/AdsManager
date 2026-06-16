@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background Colors -->
+    <color name="ad_background">#FFFFFF</color>
+    <color name="ad_card_background">#F5F5F5</color>
+
+    <!-- Text Colors -->
+    <color name="ad_text_primary">#212121</color>
+    <color name="ad_text_secondary">#757575</color>
+    <color name="ad_cta_text">#FFFFFF</color>
+
+    <!-- Border/Outline Colors -->
+    <color name="ad_border">#E0E0E0</color>
+
+    <!-- CTA Button Colors -->
+    <color name="ad_cta_background">#007BFF</color>
+    <color name="ad_cta_ripple">#0056B3</color>
+
+</resources>

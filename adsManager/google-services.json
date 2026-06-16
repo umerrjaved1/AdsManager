@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1055650874997",
+    "project_id": "adsmanagertf",
+    "storage_bucket": "adsmanagertf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1055650874997:android:577b7edf79df2efe2c5a3c",
+        "android_client_info": {
+          "package_name": "com.umer_tf.ads"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA-bzdzk6RyEdTIiq79D5HnApxUdVEene0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

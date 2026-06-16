@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="AppCompatAlertDialogStyle" parent="Theme.AppCompat.Light.Dialog.Alert">
+        <item name="colorAccent">#000000</item>
+        <item name="android:textColorPrimary">#000000</item>
+        <item name="android:background">#FFFFFF</item>
+    </style>
+
+    <style name="AdAttribution">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_gravity">left</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">15dp</item>
+        <item name="android:text">"Ad"</item>
+        <item name="android:padding">@dimen/_1sdp</item>
+        <item name="android:background">@drawable/bg_square_yellow</item>
+    </style>
+
+    <style name="AdmobTheme"/>
+
+</resources>

@@ -1,0 +1,19 @@
+﻿# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.kotlinc/
+.kotlin/
+
+# Local
+local.properties
+
+# Logs
+*.log
