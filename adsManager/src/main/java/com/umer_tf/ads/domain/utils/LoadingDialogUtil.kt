@@ -20,19 +20,26 @@ class LoadingDialogUtil private constructor(private val contextRef: WeakReferenc
     fun showLoadingDialog() {
         try {
             val context = contextRef.get() ?: return
+            
+            // Prevent BadTokenException if Activity is finishing
+            if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
+                return
+            }
+            
             if (loadingDialog != null && loadingDialog?.isShowing == true) {
                 return // Already showing
             }
             
             loadingDialog = Dialog(context).apply {
                 setContentView(R.layout.progress_dialog)
-                // Make sure dialog cover 90% of screen
                 window?.let { window ->
+                    window.setBackgroundDrawableResource(android.R.color.transparent)
                     val layoutParams = window.attributes
-                    layoutParams.width = (context.resources.displayMetrics.widthPixels * 0.9).toInt()
+                    layoutParams.width = android.view.WindowManager.LayoutParams.WRAP_CONTENT
                     window.attributes = layoutParams
                 }
                 setCancelable(true) // Make it cancelable to prevent ANR
+                setCanceledOnTouchOutside(false) // Prevent accidental dismissal on outside touch
                 show()
             }
         } catch (e: Exception) {

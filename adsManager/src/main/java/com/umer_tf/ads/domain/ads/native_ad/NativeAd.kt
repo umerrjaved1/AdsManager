@@ -89,7 +89,7 @@ class NativeAd(
             builder.frameLayout?.removeAllViews()
             builder.frameLayout?.addView(adView)
             if (builder.frameLayout?.visibility == View.GONE) {
-                builder.frameLayout.visibility = View.VISIBLE
+                builder.frameLayout?.visibility = View.VISIBLE
             }
 
             nativeAd.setOnPaidEventListener { adValue ->
@@ -130,7 +130,7 @@ class NativeAd(
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded: Admob")
+                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob")
                 builder.shimmerFrameLayout?.stopShimmer()
                 builder.shimmerFrameLayout?.visibility = View.GONE
                 onSuccessListener?.onSuccess(true)
@@ -189,7 +189,7 @@ class NativeAd(
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded: Admob")
+                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob")
                 context.showToast("Native ad loaded")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
             }
@@ -225,7 +225,7 @@ class NativeAd(
                 builder.frameLayout?.removeAllViews()
                 builder.frameLayout?.addView(adView)
                 if (builder.frameLayout?.visibility == View.GONE) {
-                    builder.frameLayout.visibility = View.VISIBLE
+                    builder.frameLayout?.visibility = View.VISIBLE
                 }
             }
             it.setOnPaidEventListener { adValue ->
@@ -281,7 +281,7 @@ class NativeAd(
             val adAdvertiser = adView.findViewById<TextView>(R.id.ad_advertiser)
 
             builder.adBgColor?.let { adBgColor ->
-                clAdBg.background = GradientDrawable().also { it ->
+                clAdBg?.background = GradientDrawable().also { it ->
                     if (builder.showBgStroke) {
                         it.shape = GradientDrawable.RECTANGLE
                         val color = builder.strokeColor?.toColorInt() ?: Color.GRAY
@@ -293,7 +293,7 @@ class NativeAd(
             }
 
             builder.ctaBgColor?.let { ctaBgColor ->
-                btnCTA.background = GradientDrawable().also {
+                btnCTA?.background = GradientDrawable().also {
                     it.shape = GradientDrawable.RECTANGLE
                     it.cornerRadius = builder.ctaRadius.toFloat()
                     it.setColor(ctaBgColor.toColorInt())
@@ -302,20 +302,22 @@ class NativeAd(
             }
 
             builder.ctaTextColor?.let { ctaTextColor ->
-                btnCTA.setTextColor(ctaTextColor.toColorInt())
+                btnCTA?.setTextColor(ctaTextColor.toColorInt())
             }
 
             builder.adTitleColor?.let { adTitleColor ->
-                adTitle.setTextColor(adTitleColor.toColorInt())
+                adTitle?.setTextColor(adTitleColor.toColorInt())
             }
 
             builder.adBodyColor?.let { adBodyColor ->
-                adBody.setTextColor(adBodyColor.toColorInt())
+                adBody?.setTextColor(adBodyColor.toColorInt())
             }
 
         if (builder.showMedia) {
-            adView.mediaView = adMedia.apply {
-                mediaContent = nativeAd.mediaContent
+            adMedia?.let {
+                adView.mediaView = it.apply {
+                    mediaContent = nativeAd.mediaContent
+                }
             }
         } else {
             adMedia?.visibility = View.GONE
@@ -334,47 +336,47 @@ class NativeAd(
             advertiserView = adAdvertiser
 
             with(builder) {
-                adTitle.isVisible = showHeadline
-                adBody.isVisible = showBody
-                btnCTA.isVisible = showCallToAction
-                icon.isVisible = iconEnabled
-                price.isVisible = showPrice
-                adRating.isVisible = showRating
-                adStore.isVisible = showStore
-                adAdvertiser.isVisible = showAdvertiser
+                adTitle?.isVisible = showHeadline
+                adBody?.isVisible = showBody
+                btnCTA?.isVisible = showCallToAction
+                icon?.isVisible = iconEnabled
+                price?.isVisible = showPrice
+                adRating?.isVisible = showRating
+                adStore?.isVisible = showStore
+                adAdvertiser?.isVisible = showAdvertiser
             }
 
-            (headlineView as TextView).text = nativeAd.headline
-            (bodyView as TextView).apply {
+            (headlineView as? TextView)?.text = nativeAd.headline
+            (bodyView as? TextView)?.apply {
                 visibility =
                     if (nativeAd.body == null || !builder.showBody) View.INVISIBLE else View.VISIBLE
                 text = nativeAd.body
             }
-            (callToActionView as AppCompatButton).apply {
+            (callToActionView as? AppCompatButton)?.apply {
                 visibility =
                     if (nativeAd.callToAction == null || !builder.showCallToAction) View.INVISIBLE else View.VISIBLE
                 text = nativeAd.callToAction
             }
-            (iconView as ImageView).apply {
+            (iconView as? ImageView)?.apply {
                 visibility =
                     if (nativeAd.icon == null || !builder.iconEnabled) View.GONE else View.VISIBLE
                 setImageDrawable(nativeAd.icon?.drawable)
             }
-            (priceView as TextView).apply {
+            (priceView as? TextView)?.apply {
                 visibility =
                     if (nativeAd.price == null || !builder.showPrice) View.INVISIBLE else View.VISIBLE
                 text = nativeAd.price
             }
-            (storeView as TextView).apply {
+            (storeView as? TextView)?.apply {
                 visibility =
                     if (nativeAd.store == null || !builder.showStore) View.INVISIBLE else View.VISIBLE
                 text = nativeAd.store
             }
-            (starRatingView as RatingBar).apply {
+            (starRatingView as? RatingBar)?.apply {
                 visibility = if (nativeAd.starRating == null) View.INVISIBLE else View.VISIBLE
                 rating = nativeAd.starRating?.toFloat() ?: 0.0f
             }
-            (advertiserView as TextView).apply {
+            (advertiserView as? TextView)?.apply {
                 visibility =
                     if (nativeAd.advertiser == null || !builder.showAdvertiser) View.INVISIBLE else View.VISIBLE
                 text = nativeAd.advertiser
@@ -475,7 +477,7 @@ class NativeAd(
                 builder.frameLayout?.removeAllViews()
                 builder.frameLayout?.addView(adView)
                 if (builder.frameLayout?.visibility == View.GONE) {
-                    builder.frameLayout.visibility = View.VISIBLE
+                    builder.frameLayout?.visibility = View.VISIBLE
                 }
             }
             it.setOnPaidEventListener { adValue ->

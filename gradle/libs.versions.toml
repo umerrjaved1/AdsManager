@@ -13,6 +13,7 @@ firebaseBom = "34.14.1"
 playServicesAds = "25.3.0"
 lifecycleProcess = "2.10.0"
 constraintlayout = "2.2.1"
+material = "1.14.0"
 
 
 
@@ -37,6 +38,7 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 
 sdp-android = { module = "com.intuit.sdp:sdp-android", version.ref = "sdpAndroid" }
 ssp-android = { module = "com.intuit.ssp:ssp-android", version.ref = "sspAndroid" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 
 
 

@@ -54,7 +54,7 @@ class NativeAdBuilder private constructor(
     /**
      * Builder class for constructing NativeAdBuilder instances.
      */
-    class Builder(private var layout: Int, private var frameLayout: FrameLayout, private var shimmerFrameLayout: ShimmerFrameLayout?) {
+    class Builder(private var layout: Int, private var frameLayout: FrameLayout?, private var shimmerFrameLayout: ShimmerFrameLayout?) {
         private var iconEnabled: Boolean = false
         private var showMedia: Boolean = false
         private var showRating: Boolean = false
@@ -89,7 +89,7 @@ class NativeAdBuilder private constructor(
          * @param frameLayout The FrameLayout.
          * @return The Builder instance.
          */
-        fun setFrameLayout(frameLayout: FrameLayout) = apply { this.frameLayout = frameLayout }
+        fun setFrameLayout(frameLayout: FrameLayout?) = apply { this.frameLayout = frameLayout }
 
         /**
          * Sets the ShimmerFrameLayout for loading animation.

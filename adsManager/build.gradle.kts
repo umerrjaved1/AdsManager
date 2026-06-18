@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.maven.publish)
@@ -45,6 +47,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.constraintlayout)
+    implementation(libs.material)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -73,14 +76,14 @@ afterEvaluate {
                 from(components.getByName("release"))
                 groupId = "com.umer_tf.ads"
                 artifactId = "ads"
-                version = "1.0.0"
+                version = "1.0.1"
             }
         }
         repositories {
             maven {
                 url = uri("https://maven.pkg.github.com/umerrjaved1/AdsManager")
                 credentials {
-                    val localProps = java.util.Properties()
+                    val localProps = Properties()
                     val localPropsFile = rootProject.file("local.properties")
                     if (localPropsFile.exists()) {
                         localProps.load(localPropsFile.inputStream())

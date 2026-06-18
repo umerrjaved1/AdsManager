@@ -150,7 +150,6 @@ class InterstitialAdLoader(
                     adController.shouldShowOpenAd = true
                     interstitialAd = null
                     onSuccessListener?.onSuccess(true)
-                    loadAd(adUnitId, null)
                     AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
                 }
 
