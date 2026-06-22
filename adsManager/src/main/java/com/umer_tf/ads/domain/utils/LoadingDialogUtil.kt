@@ -17,7 +17,7 @@ class LoadingDialogUtil private constructor(private val contextRef: WeakReferenc
 
     private var loadingDialog: Dialog? = null
 
-    fun showLoadingDialog() {
+    fun showLoadingDialog(isCancelable: Boolean=true) {
         try {
             val context = contextRef.get() ?: return
             
@@ -38,8 +38,8 @@ class LoadingDialogUtil private constructor(private val contextRef: WeakReferenc
                     layoutParams.width = android.view.WindowManager.LayoutParams.WRAP_CONTENT
                     window.attributes = layoutParams
                 }
-                setCancelable(true) // Make it cancelable to prevent ANR
-                setCanceledOnTouchOutside(false) // Prevent accidental dismissal on outside touch
+                setCancelable(isCancelable) // Make it cancelable to prevent ANR
+                setCanceledOnTouchOutside(isCancelable) // Prevent accidental dismissal on outside touch
                 show()
             }
         } catch (e: Exception) {

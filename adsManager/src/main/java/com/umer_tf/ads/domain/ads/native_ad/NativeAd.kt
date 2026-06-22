@@ -315,6 +315,9 @@ class NativeAd(
 
         if (builder.showMedia) {
             adMedia?.let {
+                it.visibility = View.VISIBLE
+                val adMediaContainer = adView.findViewById<ConstraintLayout>(R.id.constraintLayoutMedia)
+                adMediaContainer?.visibility = View.VISIBLE
                 adView.mediaView = it.apply {
                     mediaContent = nativeAd.mediaContent
                 }
