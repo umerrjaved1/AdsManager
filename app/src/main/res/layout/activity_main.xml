@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Variant 1a -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 1a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_1a" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_1a" layout="@layout/adlibrary_shimmer_native_small_1a" />
+
+        <!-- Variant 1b -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 1b" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_1b" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_1b" layout="@layout/adlibrary_shimmer_native_small_1b" />
+
+        <!-- Variant 1c -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 1c" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_1c" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_1c" layout="@layout/adlibrary_shimmer_native_small_1c" />
+
+        <!-- Variant 3a -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 3a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_3a" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_3a" layout="@layout/adlibrary_shimmer_native_small_3a" />
+
+        <!-- Variant 3b -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 3b" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_3b" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_3b" layout="@layout/adlibrary_shimmer_native_small_3b" />
+
+        <!-- Variant 4 -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 4" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_4" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_4" layout="@layout/adlibrary_shimmer_native_small_4" />
+
+        <!-- Variant 5a -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 5a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_5a" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_5a" layout="@layout/adlibrary_shimmer_native_large_5a" />
+
+        <!-- Variant 6a -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 6a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_6a" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_6a" layout="@layout/adlibrary_shimmer_native_large_6a" />
+
+        <!-- Variant 6b -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 6b" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_6b" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_6b" layout="@layout/adlibrary_shimmer_native_large_6b" />
+
+        <!-- Variant 7a -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 7a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_7a" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_7a" layout="@layout/adlibrary_shimmer_native_small_7a" />
+
+        <!-- Variant 7b -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 7b" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_7b" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_7b" layout="@layout/adlibrary_shimmer_native_small_7b" />
+
+        <!-- Variant 7c -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 7c" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+        <FrameLayout android:id="@+id/adContainer_7c" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <include android:id="@+id/shimmerContainer_7c" layout="@layout/adlibrary_shimmer_native_small_7c" />
+
+    </LinearLayout>
+</ScrollView>

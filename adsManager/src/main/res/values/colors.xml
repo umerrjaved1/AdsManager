@@ -16,4 +16,12 @@
     <color name="ad_cta_background">#007BFF</color>
     <color name="ad_cta_ripple">#0056B3</color>
 
+    <!-- Colors for imported layouts -->
+    <color name="Primary">#03A9F4</color>
+    <color name="SurfaceContainer">#ffffff</color>
+    <color name="ad_heading_color">#000000</color>
+    <color name="onPrimary">#FFFFFF</color>
+    <color name="onSurface">#000000</color>
+    <color name="onSurfaceVariant">#44464F</color>
+
 </resources>
