@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.LayoutRes
 import androidx.annotation.MainThread
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
@@ -12,7 +13,6 @@ import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
-import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
@@ -39,7 +39,7 @@ class InterstitialAdLoader(
     private val context: Context,
     private val adController: AdController
 ) : IInterstitialAdLoader {
-    private val TAG = "InterstitialAdLoader"
+    private val TAG = "AdsManager_Interstitial"
     private var interstitialAd: InterstitialAd? = null
     private var mInterstitialAdCounter: Int = 0
     private var loadingDialogUtil: LoadingDialogUtil? = null
@@ -53,30 +53,33 @@ class InterstitialAdLoader(
     @MainThread
     override fun loadAd(
         @ValidateAdUnitId adUnitId: String,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdLoaded: ((Boolean) -> Unit)?
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
+        Log.e(TAG, "InterstitialAdLoader: loadAd requested for adUnitId=$adUnitId")
         if (interstitialAd != null) {
-            onSuccessListener?.onSuccess(true)
+            Log.e(TAG, "InterstitialAdLoader: loadAd already loaded for adUnitId=$adUnitId")
+            onAdLoaded?.invoke(true)
             return
         }
         if (!shouldShowAd(context)) {
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: loadAd skipped (shouldShowAd returns false)")
+            onAdLoaded?.invoke(false)
             return
         }
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(context, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
             override fun onAdLoaded(ad: InterstitialAd) {
                 interstitialAd = ad
-                onSuccessListener?.onSuccess(true)
-                Log.d(TAG, "Monetization :- onAdLoaded")
+                Log.e(TAG, "InterstitialAdLoader: onAdLoaded successfully for adUnitId=$adUnitId")
+                onAdLoaded?.invoke(true)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "Interstitial_ad")
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
                 interstitialAd = null
-                onSuccessListener?.onSuccess(false)
-                Log.d(TAG, "Monetization :- onAdFailedToLoad: ${error.message}")
+                Log.e(TAG, "InterstitialAdLoader: onAdFailedToLoad error=${error.message}")
+                onAdLoaded?.invoke(false)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "Interstitial_ad")
             }
         })
@@ -86,42 +89,46 @@ class InterstitialAdLoader(
     override fun loadAdWithTimeOut(
         @ValidateAdUnitId adUnitId: String,
         timeOut: Long,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdLoaded: ((Boolean) -> Unit)?
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
-        var mOnSuccessListener: OnSuccessListener<Boolean>? = onSuccessListener
+        Log.e(TAG, "InterstitialAdLoader: loadAdWithTimeOut requested for adUnitId=$adUnitId timeout=$timeOut")
+        var mOnAdLoaded: ((Boolean) -> Unit)? = onAdLoaded
         if (!shouldShowAd(context)) {
-            mOnSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: loadAdWithTimeOut skipped (shouldShowAd returns false)")
+            mOnAdLoaded?.invoke(false)
             return
         }
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(context, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
             override fun onAdLoaded(ad: InterstitialAd) {
                 interstitialAd = ad
-                mOnSuccessListener?.onSuccess(true)
-                mOnSuccessListener = null
-                Log.d(TAG, "Monetization :- onAdLoaded")
+                Log.e(TAG, "InterstitialAdLoader: onAdLoaded successfully for adUnitId=$adUnitId")
+                mOnAdLoaded?.invoke(true)
+                mOnAdLoaded = null
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "Interstitial_ad")
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
                 interstitialAd = null
-                mOnSuccessListener?.onSuccess(false)
-                mOnSuccessListener = null
-                Log.d(TAG, "Monetization :- onAdFailedToLoad: ${error.message}")
+                Log.e(TAG, "InterstitialAdLoader: onAdFailedToLoad error=${error.message}")
+                mOnAdLoaded?.invoke(false)
+                mOnAdLoaded = null
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "Interstitial_ad")
             }
         })
         job = coroutineScope.launch {
             delay(timeOut)
             if (interstitialAd == null) {
-                mOnSuccessListener?.onSuccess(false)
-                mOnSuccessListener = null
+                Log.e(TAG, "InterstitialAdLoader: loadAdWithTimeOut timed out after ${timeOut}ms")
+                mOnAdLoaded?.invoke(false)
+                mOnAdLoaded = null
             }
         }
     }
 
     override fun destroy() {
+        Log.e(TAG, "InterstitialAdLoader: destroy called")
         interstitialAd = null
         coroutineScope.cancel()
         mInterstitialAdCounter = 0
@@ -135,30 +142,36 @@ class InterstitialAdLoader(
     override fun showAd(
         activity: Activity,
         adUnitId: String,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
+        Log.e(TAG, "InterstitialAdLoader: showAd requested for adUnitId=$adUnitId")
         if (!shouldShowAd(context) || activity.isFinishing || activity.isDestroyed) {
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: showAd skipped (activity finishing/destroyed or shouldShowAd false)")
+            onAdFailedToShow?.invoke("Activity finishing/destroyed or shouldShowAd false")
             return
         }
         val ad = interstitialAd
         if (ad != null) {
             ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                 override fun onAdDismissedFullScreenContent() {
+                    Log.e(TAG, "InterstitialAdLoader: onAdDismissedFullScreenContent")
                     TimeManager.getInstance().reset()
                     mInterstitialAdCounter = 0
                     adController.shouldShowOpenAd = true
                     interstitialAd = null
-                    onSuccessListener?.onSuccess(true)
+                    onAdDismissed?.invoke()
                     AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
                 }
 
                 override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                    Log.e(TAG, "InterstitialAdLoader: onAdFailedToShowFullScreenContent error=${adError.message}")
                     interstitialAd = null
-                    onSuccessListener?.onSuccess(false)
+                    onAdFailedToShow?.invoke(adError.message)
                 }
 
                 override fun onAdShowedFullScreenContent() {
+                    Log.e(TAG, "InterstitialAdLoader: onAdShowedFullScreenContent")
                     job?.cancel()
                     adController.shouldShowOpenAd = false
                     AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "Interstitial_ad")
@@ -166,6 +179,7 @@ class InterstitialAdLoader(
 
                 override fun onAdClicked() {
                     super.onAdClicked()
+                    Log.e(TAG, "InterstitialAdLoader: onAdClicked")
                     AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "Interstitial_ad")
                 }
             }
@@ -176,33 +190,38 @@ class InterstitialAdLoader(
             }
             ad.show(activity)
         } else {
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: showAd failed because interstitialAd is null")
+            onAdFailedToShow?.invoke("Ad is null")
         }
     }
 
     override fun showAndLoadAd(
         activity: Activity,
         adUnitId: String,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
-        showAd(activity, adUnitId, onSuccessListener)
+        showAd(activity, adUnitId, onAdDismissed, onAdFailedToShow)
     }
 
     override fun showAdWithTimeAndCounter(
         activity: Activity,
         adUnitId: String,
         showForcefully: Boolean,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
         if (!shouldShowInterstitialAd(showForcefully)) {
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: showAdWithTimeAndCounter conditions not met")
+            onAdFailedToShow?.invoke("Counter or time condition not met")
             return
         }
-        Log.d(TAG, "Monetization :- showAdWithTimeAndCounter: mInterstitialAdCounter: $mInterstitialAdCounter")
+        Log.e(TAG, "InterstitialAdLoader: showAdWithTimeAndCounter counter=$mInterstitialAdCounter")
         if (interstitialAd != null) {
-            showAd(activity, adUnitId, onSuccessListener)
+            showAd(activity, adUnitId, onAdDismissed, onAdFailedToShow)
         } else {
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: showAdWithTimeAndCounter ad not loaded, loading now")
+            onAdFailedToShow?.invoke("Ad not loaded")
             loadAd(adUnitId, null)
         }
     }
@@ -212,51 +231,68 @@ class InterstitialAdLoader(
         activity: Activity,
         @ValidateAdUnitId adUnitId: String,
         showDialog: Boolean,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdLoaded: ((Boolean) -> Unit)?,
+        onAdDismissed: (() -> Unit)?
     ) {
+        loadAndShowAd(activity, adUnitId, showDialog, adController.loadingDialogLayoutResId, onAdLoaded, onAdDismissed)
+    }
+
+    @MainThread
+    override fun loadAndShowAd(
+        activity: Activity,
+        @ValidateAdUnitId adUnitId: String,
+        showDialog: Boolean,
+        @LayoutRes customLoadingLayoutResId: Int?,
+        onAdLoaded: ((Boolean) -> Unit)?,
+        onAdDismissed: (() -> Unit)?
+    ) {
+        Log.e(TAG, "InterstitialAdLoader: loadAndShowAd requested for adUnitId=$adUnitId")
         if (!shouldShowAd(context) || activity.isFinishing || activity.isDestroyed) {
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: loadAndShowAd skipped (activity finishing/destroyed or shouldShowAd false)")
+            onAdLoaded?.invoke(false)
             return
         }
         kotlin.runCatching {
             loadingDialogUtil?.destroy()
-            loadingDialogUtil = LoadingDialogUtil.create(activity)
+            val targetLayoutResId = customLoadingLayoutResId ?: adController.loadingDialogLayoutResId
+            loadingDialogUtil = LoadingDialogUtil.create(activity, targetLayoutResId)
             if (!activity.isFinishing && showDialog) {
-                loadingDialogUtil?.showLoadingDialog()
+                loadingDialogUtil?.showLoadingDialog(layoutResId = targetLayoutResId)
             }
             val adRequest = AdRequest.Builder().build()
             InterstitialAd.load(activity, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
-                    Log.d(TAG, "Monetization :- onAdLoaded")
+                    Log.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdLoaded successfully for adUnitId=$adUnitId")
+                    onAdLoaded?.invoke(true)
                     Handler(Looper.getMainLooper()).postDelayed({
                         if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
                         if (!activity.isFinishing) {
                             ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                                 override fun onAdDismissedFullScreenContent() {
+                                    Log.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdDismissedFullScreenContent")
                                     TimeManager.getInstance().reset()
                                     mInterstitialAdCounter = 0
                                     adController.shouldShowOpenAd = true
                                     interstitialAd = null
-                                    onSuccessListener?.onSuccess(true)
-                                    Log.d(TAG, "Monetization :- The ad was dismissed.")
+                                    onAdDismissed?.invoke()
                                     AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
                                 }
 
                                 override fun onAdFailedToShowFullScreenContent(adError: AdError) {
                                     interstitialAd = null
-                                    onSuccessListener?.onSuccess(false)
-                                    Log.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent")
+                                    Log.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdFailedToShowFullScreenContent error=${adError.message}")
                                 }
 
                                 override fun onAdShowedFullScreenContent() {
                                     adController.shouldShowOpenAd = false
                                     interstitialAd = null
-                                    Log.d(TAG, "Monetization :- The ad was shown.")
+                                    Log.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdShowedFullScreenContent")
                                     AnalyticsManager.getInstance(context).sendAnalytics(SHOWING_AD, "Interstitial_ad")
                                 }
 
                                 override fun onAdClicked() {
                                     super.onAdClicked()
+                                    Log.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdClicked")
                                     AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "Interstitial_ad")
                                 }
                             }
@@ -271,8 +307,8 @@ class InterstitialAdLoader(
                 }
 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    Log.d(TAG, "Monetization :- onAdFailedToLoad: ${loadAdError.message}")
-                    onSuccessListener?.onSuccess(false)
+                    Log.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdFailedToLoad error=${loadAdError.message}")
+                    onAdLoaded?.invoke(false)
                     if (!activity.isFinishing) {
                         Handler(Looper.getMainLooper()).post {
                             loadingDialogUtil?.hideLoadingDialog()
@@ -282,8 +318,8 @@ class InterstitialAdLoader(
                 }
             })
         }.getOrElse {
-            Log.e(TAG, "Monetization :- loadAndShowInterstitialAd: Exception-> $it")
-            onSuccessListener?.onSuccess(false)
+            Log.e(TAG, "InterstitialAdLoader: loadAndShowAd Exception-> $it")
+            onAdLoaded?.invoke(false)
         }
     }
 
@@ -295,7 +331,7 @@ class InterstitialAdLoader(
         val adCounterMet = mInterstitialAdCounter >= adController.interstitialCounter
         val minTimeMet = elapsedTime >= adController.interstitialAdMinTime
         val maxTimeMet = elapsedTime >= adController.interstitialAdMaxTime
-        Log.d(TAG, "Monetization :- shouldShowInterstitialAd: counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet")
+        Log.e(TAG, "InterstitialAdLoader: shouldShowInterstitialAd counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet")
         return (adCounterMet && minTimeMet) || maxTimeMet
     }
 }

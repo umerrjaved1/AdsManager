@@ -29,7 +29,7 @@
         <androidx.cardview.widget.CardView
             android:id="@+id/ad_media_card"
             android:layout_width="140dp"
-            android:layout_height="100dp"
+            android:layout_height="140dp"
             app:cardCornerRadius="8dp"
             app:cardElevation="0dp"
             app:cardBackgroundColor="@android:color/transparent"
@@ -47,9 +47,11 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:layout_marginStart="12dp"
+            app:layout_goneMarginStart="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toTopOf="parent"
-            tools:src="@mipmap/ic_launcher" />
+            tools:src="@drawable/bg_border_blue"
+            />
 
         <TextView
             android:id="@+id/ad_headline"
@@ -58,12 +60,14 @@
             android:layout_marginStart="12dp"
             android:layout_marginTop="8dp"
             android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
+            android:fontFamily="@font/inter_semibold"
             android:maxLines="1"
             android:textColor="@color/ad_heading_color"
             android:textSize="16sp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_goneMarginStart="0dp"
+            app:layout_goneMarginTop="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/ad_app_icon"
             tools:text="SadaPay: Money..." />
@@ -75,14 +79,22 @@
             android:layout_marginStart="12dp"
             android:layout_marginTop="4dp"
             android:ellipsize="end"
-            android:fontFamily="sans-serif"
+            android:fontFamily="@font/inter"
             android:maxLines="2"
             android:textColor="@color/onSurfaceVariant"
             android:textSize="12sp"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_goneMarginStart="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/ad_headline"
             tools:text="Financial freedom, the Sada way!" />
+
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/barrier_media_or_body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="bottom"
+            app:constraint_referenced_ids="ad_media_card,ad_body,ad_headline" />
 
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/ad_call_to_action"
@@ -92,13 +104,15 @@
             android:background="@drawable/cta_small_1a_shape"
             android:clickable="true"
             android:focusable="true"
+            android:fontFamily="@font/inter_bold"
             android:gravity="center"
             android:text="@string/install"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_media_card" />
+            app:layout_constraintTop_toBottomOf="@id/barrier_media_or_body" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.gms.ads.nativead.NativeAdView>

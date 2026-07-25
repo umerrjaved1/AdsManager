@@ -10,7 +10,9 @@ import com.umer_tf.ads.domain.ads.native_ad.NativeAd
 import com.umer_tf.ads.domain.ads.rewarded.RewardedAdLoader
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
+import androidx.annotation.LayoutRes
 import com.umer_tf.ads.domain.utils.AdController
+import com.umer_tf.ads.domain.utils.LoadingDialogUtil
 import com.umer_tf.ads.domain.utils.TimeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,8 +173,27 @@ open class AdMobManager(
      * @param isSplash The splash status.
      * @return The current instance of AdMobManager.
      */
+    /**
+     * Sets the splash status to only show App open ad at start.
+     * Set this to false when splash screen is destroyed to show the Open ad at resume.
+     *
+     * @param isSplash The splash status.
+     * @return The current instance of AdMobManager.
+     */
     fun setSplash(isSplash: Boolean): AdMobManager {
         adController.isSplash = isSplash
+        return this
+    }
+
+    /**
+     * Sets a custom layout resource ID for the loading dialog to match the app theme.
+     *
+     * @param layoutResId The custom layout resource ID.
+     * @return The current instance of AdMobManager.
+     */
+    fun setLoadingDialogLayout(@LayoutRes layoutResId: Int): AdMobManager {
+        adController.loadingDialogLayoutResId = layoutResId
+        LoadingDialogUtil.customLoadingLayoutResId = layoutResId
         return this
     }
 

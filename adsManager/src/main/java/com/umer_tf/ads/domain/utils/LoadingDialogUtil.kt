@@ -3,21 +3,38 @@ package com.umer_tf.ads.domain.utils
 import android.app.Dialog
 import android.content.Context
 import android.util.Log
+import androidx.annotation.LayoutRes
 import com.umer_tf.ads.R
 import java.lang.ref.WeakReference
 
-class LoadingDialogUtil private constructor(private val contextRef: WeakReference<Context>) {
+class LoadingDialogUtil private constructor(
+    private val contextRef: WeakReference<Context>,
+    @LayoutRes private var customLayoutResId: Int? = null
+) {
     companion object {
         const val TAG = "LoadingDialogUtil"
-        
-        fun create(context: Context): LoadingDialogUtil {
-            return LoadingDialogUtil(WeakReference(context))
+
+        @JvmStatic
+        @LayoutRes
+        var customLoadingLayoutResId: Int? = null
+
+        fun create(context: Context, @LayoutRes customLayoutResId: Int? = null): LoadingDialogUtil {
+            return LoadingDialogUtil(WeakReference(context), customLayoutResId)
+        }
+
+        fun setGlobalLoadingLayoutResId(@LayoutRes layoutResId: Int?) {
+            customLoadingLayoutResId = layoutResId
         }
     }
 
     private var loadingDialog: Dialog? = null
 
-    fun showLoadingDialog(isCancelable: Boolean=true) {
+    fun setCustomLayout(@LayoutRes layoutResId: Int?): LoadingDialogUtil {
+        this.customLayoutResId = layoutResId
+        return this
+    }
+
+    fun showLoadingDialog(isCancelable: Boolean = true, @LayoutRes layoutResId: Int? = null) {
         try {
             val context = contextRef.get() ?: return
             
@@ -29,9 +46,14 @@ class LoadingDialogUtil private constructor(private val contextRef: WeakReferenc
             if (loadingDialog != null && loadingDialog?.isShowing == true) {
                 return // Already showing
             }
-            
+
+            val targetLayoutResId = layoutResId
+                ?: customLayoutResId
+                ?: customLoadingLayoutResId
+                ?: R.layout.progress_dialog
+
             loadingDialog = Dialog(context).apply {
-                setContentView(R.layout.progress_dialog)
+                setContentView(targetLayoutResId)
                 window?.let { window ->
                     window.setBackgroundDrawableResource(android.R.color.transparent)
                     val layoutParams = window.attributes

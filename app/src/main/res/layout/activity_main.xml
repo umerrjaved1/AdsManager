@@ -13,6 +13,260 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ad Operations &amp; Controls"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Interstitial Ads Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Interstitial Ad"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnLoadInterstitial"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Load Interstitial"
+                android:textSize="11sp"/>
+
+            <Button
+                android:id="@+id/btnShowInterstitial"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="Show Interstitial"
+                android:textSize="11sp"/>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnLoadAndShowInterstitial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Load &amp; Show Interstitial"
+            android:textSize="12sp"/>
+
+        <!-- Rewarded Ads Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Rewarded Ad"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnLoadRewarded"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Load Rewarded"
+                android:textSize="11sp"/>
+
+            <Button
+                android:id="@+id/btnShowRewarded"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="Show Rewarded"
+                android:textSize="11sp"/>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnLoadAndShowRewarded"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Load &amp; Show Rewarded"
+            android:textSize="12sp"/>
+
+        <!-- App Open Ads Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="App Open Ad"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnLoadAppOpen"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Load App Open"
+                android:textSize="11sp"/>
+
+            <Button
+                android:id="@+id/btnShowAppOpen"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="Show App Open"
+                android:textSize="11sp"/>
+        </LinearLayout>
+
+        <!-- Banner Ads Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Banner Ads Section"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <!-- 1. Adaptive Banner -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="1. Adaptive Banner"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="8dp"/>
+
+        <Button
+            android:id="@+id/btnShowAdaptiveBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; Show Adaptive Banner"
+            android:textSize="11sp"/>
+
+        <FrameLayout
+            android:id="@+id/adContainer_adaptive_banner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"/>
+        <include
+            android:id="@+id/shimmerContainer_adaptive_banner"
+            layout="@layout/shimmer_native_banner" />
+
+        <!-- 2. Medium Rectangle Banner (300x250) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2. Medium Rectangle Banner (300x250)"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="16dp"/>
+
+        <Button
+            android:id="@+id/btnShowMemRecBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; Show Medium Rec Banner"
+            android:textSize="11sp"/>
+
+        <FrameLayout
+            android:id="@+id/adContainer_memrec_banner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"/>
+        <include
+            android:id="@+id/shimmerContainer_memrec_banner"
+            layout="@layout/adlibrary_shimmer_native_large_v2" />
+
+        <!-- 3. Collapsible Banner -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="3. Collapsible Banner"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="16dp"/>
+
+        <Button
+            android:id="@+id/btnShowCollapsibleBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; Show Collapsible Banner"
+            android:textSize="11sp"/>
+
+        <FrameLayout
+            android:id="@+id/adContainer_collapsible_banner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"/>
+        <include
+            android:id="@+id/shimmerContainer_collapsible_banner"
+            layout="@layout/shimmer_native_banner" />
+
+        <!-- Fullscreen Native Ad Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Fullscreen Native Ad"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="4dp"/>
+
+        <Button
+            android:id="@+id/btnShowFullscreenNative"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; Show Fullscreen Native"
+            android:textSize="12sp"/>
+
+        <FrameLayout
+            android:id="@+id/adContainer_fullscreen"
+            android:layout_width="match_parent"
+            android:layout_height="350dp"
+            android:layout_marginTop="8dp"/>
+        <include
+            android:id="@+id/shimmerContainer_fullscreen"
+            layout="@layout/adlibrary_shimmer_native_large_6a" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginVertical="20dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Native Ad Small &amp; Large Variants"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="12dp" />
+
         <!-- Variant 1a -->
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 1a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
         <FrameLayout android:id="@+id/adContainer_1a" android:layout_width="match_parent" android:layout_height="wrap_content"/>

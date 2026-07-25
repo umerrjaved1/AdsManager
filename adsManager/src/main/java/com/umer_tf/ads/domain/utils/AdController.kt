@@ -1,5 +1,7 @@
 package com.umer_tf.ads.domain.utils
 
+import androidx.annotation.LayoutRes
+
 class AdController {
     @JvmField
     var openAdResumeTime: Long = 5
@@ -27,4 +29,8 @@ class AdController {
 
     @JvmField
     var isSplash: Boolean = false
+
+    @JvmField
+    @LayoutRes
+    var loadingDialogLayoutResId: Int? = null
 }

@@ -37,13 +37,14 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
+            android:fontFamily="@font/inter_semibold"
             android:maxLines="1"
             android:textColor="@color/ad_heading_color"
             android:textSize="18sp"
             android:textStyle="bold"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_goneMarginStart="0dp"
+            app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toTopOf="parent"
             tools:text="SadaPay: Money made si..." />
 
@@ -61,6 +62,7 @@
             android:textColor="#808080"
             android:textSize="10sp"
             android:textStyle="bold"
+            app:layout_goneMarginStart="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/ad_headline"
             tools:ignore="SmallSp" />
@@ -73,12 +75,13 @@
             android:layout_marginStart="14dp"
             android:layout_marginTop="8dp"
             android:ellipsize="end"
-            android:fontFamily="sans-serif"
+            android:fontFamily="@font/inter"
             android:maxLines="2"
             android:textColor="@color/onSurfaceVariant"
             android:textSize="13sp"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_goneMarginStart="0dp"
+            app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/ad_badge"
             tools:text="Financial freedom, the Sada way! Make payments faster than you think." />
 
@@ -92,15 +95,17 @@
             android:background="@drawable/cta_small_1a_shape"
             android:clickable="true"
             android:focusable="true"
+            android:fontFamily="@font/inter_bold"
             android:gravity="center"
             android:text="@string/install"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_body"
-            app:layout_constraintBottom_toBottomOf="parent" />
+            app:layout_goneMarginStart="0dp"
+            app:layout_constraintStart_toEndOf="@id/ad_media_card"
+            app:layout_constraintTop_toBottomOf="@id/ad_body" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

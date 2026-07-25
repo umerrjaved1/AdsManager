@@ -17,7 +17,11 @@
             tools:targetApi="33"
             tools:replace="android:theme" />
 
-    </application>
+        <activity
+            android:name="com.umer_tf.ads.domain.ads.native_ad.FullScreenNativeAdActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
+    </application>
 
 </manifest>

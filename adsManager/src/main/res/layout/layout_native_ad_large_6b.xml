@@ -41,6 +41,7 @@
             android:id="@+id/ad_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
             android:background="@drawable/adlibrary_ad_badge_border"
             android:paddingHorizontal="4dp"
             android:paddingVertical="1dp"
@@ -49,7 +50,7 @@
             android:textSize="9sp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/ad_media_card"
             tools:ignore="SmallSp" />
 
         <TextView
@@ -57,6 +58,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
+            android:layout_marginTop="12dp"
             android:layout_marginEnd="8dp"
             android:ellipsize="end"
             android:fontFamily="sans-serif-medium"
@@ -64,11 +66,18 @@
             android:textColor="@color/ad_heading_color"
             android:textSize="14sp"
             android:textStyle="bold"
-            app:layout_constraintBottom_toBottomOf="@id/ad_app_icon"
             app:layout_constraintEnd_toStartOf="@id/ad_badge"
+            app:layout_goneMarginStart="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_app_icon"
-            app:layout_constraintTop_toTopOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/ad_media_card"
             tools:text="SadaPay: Money..." />
+
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/barrier_icon_header"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="bottom"
+            app:constraint_referenced_ids="ad_app_icon,ad_headline,ad_badge" />
 
         <TextView
             android:id="@+id/ad_body"
@@ -82,7 +91,7 @@
             android:textSize="12sp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/barrier_icon_header"
             tools:text="Financial freedom, the Sada way!" />
 
         <androidx.appcompat.widget.AppCompatButton
@@ -98,6 +107,7 @@
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/ad_body" />

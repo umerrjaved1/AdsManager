@@ -24,8 +24,6 @@ import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeAdOptions
 import com.google.android.gms.ads.nativead.NativeAdView
 import com.umer_tf.ads.R
-import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
-import com.umer_tf.ads.domain.ads.listeners.OnSuccessListenerNative
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
@@ -45,7 +43,7 @@ class NativeAd(
     private val context: Context
 ): INativeAdLoader {
 
-    private val TAG = "NativeAd"
+    private val TAG = "AdsManager_Native"
 
     private var loadedNativeAd: NativeAd? = null
     private var loadAndShowNativeAd: NativeAd? = null
@@ -55,19 +53,21 @@ class NativeAd(
     /**
      * Loads and shows a native ad.
      * @param builder The builder for the native ad.
-     * @param onSuccessListener The listener for the success event.
+     * @param onAdLoaded The callback for the load event.
      */
     @MainThread
     override fun loadAndShow(
         @ValidateAdUnitId adUnitId: String,
         builder: NativeAdBuilder,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onAdLoaded: ((Boolean) -> Unit)?
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
+        Log.e(TAG, "NativeAd: loadAndShow requested for adUnitId=$adUnitId")
         if (!shouldShowAd(context)) {
+            Log.e(TAG, "NativeAd: loadAndShow skipped (shouldShowAd returns false)")
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
-            onSuccessListener?.onSuccess(false)
+            onAdLoaded?.invoke(false)
             return
         }
         if (loadAndShowNativeAd!=null){
@@ -113,32 +113,34 @@ class NativeAd(
         val adLoader = adBuilder.withAdListener(object : AdListener() {
             override fun onAdClicked() {
                 super.onAdClicked()
-                Log.d(TAG, "Monetization :- onAdClicked()")
+                Log.e(TAG, "NativeAd: onAdClicked()")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "NativeAd")
             }
 
             override fun onAdClosed() {
                 super.onAdClosed()
+                Log.e(TAG, "NativeAd: onAdClosed()")
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
-                Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + loadAdError.message)
-                onSuccessListener?.onSuccess(false)
+                Log.e(TAG, "NativeAd: onAdFailedToLoad() error=${loadAdError.message}")
+                onAdLoaded?.invoke(false)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
             }
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob")
+                Log.e(TAG, "NativeAd: onAdLoaded (loadAndShow) successfully for adUnitId=$adUnitId")
                 builder.shimmerFrameLayout?.stopShimmer()
                 builder.shimmerFrameLayout?.visibility = View.GONE
-                onSuccessListener?.onSuccess(true)
+                onAdLoaded?.invoke(true)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
             }
 
             override fun onAdImpression() {
                 super.onAdImpression()
+                Log.e(TAG, "NativeAd: onAdImpression()")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd")
             }
         }).build()
@@ -149,24 +151,27 @@ class NativeAd(
     /**
      * Loads a native ad.
      * @param adUnitId The ad unit ID for the native ad.
-     * @param onSuccessListener The listener for the success event.
+     * @param onAdLoadedNative The callback for the success event.
      */
     @MainThread
     override fun loadAd(
         @ValidateAdUnitId adUnitId: String,
-        onSuccessListener: OnSuccessListenerNative<Boolean,NativeAd?>?,
+        onAdLoadedNative: ((Boolean, NativeAd?) -> Unit)?,
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
+        Log.e(TAG, "NativeAd: loadAd requested for adUnitId=$adUnitId")
 
         if (!shouldShowAd(context)) {
-            onSuccessListener?.onSuccess(false,null)
+            Log.e(TAG, "NativeAd: loadAd skipped (shouldShowAd returns false)")
+            onAdLoadedNative?.invoke(false, null)
             return
         }
 
         val adBuilder = AdLoader.Builder(context, adUnitId)
         adBuilder.forNativeAd { nativeAd ->
             loadedNativeAd = nativeAd
-            onSuccessListener?.onSuccess(true,nativeAd)
+            Log.e(TAG, "NativeAd: forNativeAd callback received for adUnitId=$adUnitId")
+            onAdLoadedNative?.invoke(true, nativeAd)
         }
 
         val videoOptions = VideoOptions.Builder().setStartMuted(false).build()
@@ -176,26 +181,27 @@ class NativeAd(
         val adLoader = adBuilder.withAdListener(object : AdListener() {
             override fun onAdClicked() {
                 super.onAdClicked()
-                Log.d(TAG, "onAdClicked()")
+                Log.e(TAG, "NativeAd: onAdClicked()")
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
-                Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + loadAdError.message)
+                Log.e(TAG, "NativeAd: onAdFailedToLoad() error=${loadAdError.message}")
                 context.showToast("Failed to load native ad")
-                onSuccessListener?.onSuccess(false,null)
+                onAdLoadedNative?.invoke(false, null)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
             }
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob")
+                Log.e(TAG, "NativeAd: onAdLoaded (loadAd) successfully for adUnitId=$adUnitId")
                 context.showToast("Native ad loaded")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
             }
 
             override fun onAdImpression() {
                 super.onAdImpression()
+                Log.e(TAG, "NativeAd: onAdImpression()")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd")
             }
         }).build()
@@ -211,6 +217,7 @@ class NativeAd(
     @MainThread
     override fun showLoadedAd(builder: NativeAdBuilder, @ValidateAdUnitId adUnitId: String) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
+        Log.e(TAG, "NativeAd: showLoadedAd requested for adUnitId=$adUnitId")
         if (!shouldShowAd(context)) {
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
@@ -292,17 +299,36 @@ class NativeAd(
                 }
             }
 
-            builder.ctaBgColor?.let { ctaBgColor ->
-                btnCTA?.background = GradientDrawable().also {
-                    it.shape = GradientDrawable.RECTANGLE
-                    it.cornerRadius = builder.ctaRadius.toFloat()
-                    it.setColor(ctaBgColor.toColorInt())
-                    it.setTint(ctaBgColor.toColorInt())
-                }
-            }
+            val density = context.resources.displayMetrics.density
+            val radiusInPx = builder.ctaRadius * density
 
-            builder.ctaTextColor?.let { ctaTextColor ->
-                btnCTA?.setTextColor(ctaTextColor.toColorInt())
+            if (btnCTA != null) {
+                val ctaColor = builder.ctaBgColor?.let { kotlin.runCatching { it.toColorInt() }.getOrNull() }
+                val existingDrawable = btnCTA.background?.mutate()
+
+                if (ctaColor != null) {
+                    val drawable = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = radiusInPx
+                        setColor(ctaColor)
+                    }
+                    btnCTA.background = drawable
+                } else if (existingDrawable is GradientDrawable) {
+                    existingDrawable.cornerRadius = radiusInPx
+                    btnCTA.background = existingDrawable
+                } else {
+                    val defaultCtaColor = androidx.core.content.ContextCompat.getColor(context, R.color.ad_cta_background)
+                    val drawable = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = radiusInPx
+                        setColor(defaultCtaColor)
+                    }
+                    btnCTA.background = drawable
+                }
+
+                builder.ctaTextColor?.let { ctaTextColor ->
+                    btnCTA.setTextColor(ctaTextColor.toColorInt())
+                }
             }
 
             builder.adTitleColor?.let { adTitleColor ->
@@ -313,18 +339,32 @@ class NativeAd(
                 adBody?.setTextColor(adBodyColor.toColorInt())
             }
 
-        if (builder.showMedia) {
-            adMedia?.let {
-                it.visibility = View.VISIBLE
-                val adMediaContainer = adView.findViewById<ConstraintLayout>(R.id.constraintLayoutMedia)
-                adMediaContainer?.visibility = View.VISIBLE
-                adView.mediaView = it.apply {
-                    mediaContent = nativeAd.mediaContent
+            kotlin.runCatching {
+                androidx.core.content.res.ResourcesCompat.getFont(context, R.font.inter_semibold)?.let { font ->
+                    adTitle?.typeface = font
                 }
+                androidx.core.content.res.ResourcesCompat.getFont(context, R.font.inter)?.let { font ->
+                    adBody?.typeface = font
+                }
+                androidx.core.content.res.ResourcesCompat.getFont(context, R.font.inter_bold)?.let { font ->
+                    btnCTA?.typeface = font
+                }
+            }
+
+        val adMediaCard = adView.findViewById<View>(R.id.ad_media_card)
+        val adMediaContainer = adView.findViewById<View>(R.id.constraintLayoutMedia)
+        val hasMediaContent = nativeAd.mediaContent != null
+
+        if (builder.showMedia && hasMediaContent) {
+            adMedia?.visibility = View.VISIBLE
+            adMediaCard?.visibility = View.VISIBLE
+            adMediaContainer?.visibility = View.VISIBLE
+            adView.mediaView = adMedia?.apply {
+                mediaContent = nativeAd.mediaContent
             }
         } else {
             adMedia?.visibility = View.GONE
-            val adMediaContainer = adView.findViewById<ConstraintLayout>(R.id.constraintLayoutMedia)
+            adMediaCard?.visibility = View.GONE
             adMediaContainer?.visibility = View.GONE
         }
 
@@ -337,6 +377,12 @@ class NativeAd(
             starRatingView = adRating
             storeView = adStore
             advertiserView = adAdvertiser
+
+            val headlineContainer = adView.findViewById<View>(R.id.headline_container)
+            if (headlineContainer != null) {
+                val hasHeadline = builder.showHeadline && !nativeAd.headline.isNullOrEmpty()
+                headlineContainer.visibility = if (hasHeadline) View.VISIBLE else View.GONE
+            }
 
             with(builder) {
                 adTitle?.isVisible = showHeadline
@@ -352,36 +398,38 @@ class NativeAd(
             (headlineView as? TextView)?.text = nativeAd.headline
             (bodyView as? TextView)?.apply {
                 visibility =
-                    if (nativeAd.body == null || !builder.showBody) View.INVISIBLE else View.VISIBLE
+                    if (nativeAd.body.isNullOrEmpty() || !builder.showBody) View.GONE else View.VISIBLE
                 text = nativeAd.body
             }
             (callToActionView as? AppCompatButton)?.apply {
                 visibility =
-                    if (nativeAd.callToAction == null || !builder.showCallToAction) View.INVISIBLE else View.VISIBLE
+                    if (nativeAd.callToAction.isNullOrEmpty() || !builder.showCallToAction) View.GONE else View.VISIBLE
                 text = nativeAd.callToAction
             }
             (iconView as? ImageView)?.apply {
-                visibility =
-                    if (nativeAd.icon == null || !builder.iconEnabled) View.GONE else View.VISIBLE
-                setImageDrawable(nativeAd.icon?.drawable)
+                val hasIcon = builder.iconEnabled && nativeAd.icon != null && nativeAd.icon?.drawable != null
+                visibility = if (hasIcon) View.VISIBLE else View.GONE
+                if (hasIcon) {
+                    setImageDrawable(nativeAd.icon?.drawable)
+                }
             }
             (priceView as? TextView)?.apply {
                 visibility =
-                    if (nativeAd.price == null || !builder.showPrice) View.INVISIBLE else View.VISIBLE
+                    if (nativeAd.price.isNullOrEmpty() || !builder.showPrice) View.GONE else View.VISIBLE
                 text = nativeAd.price
             }
             (storeView as? TextView)?.apply {
                 visibility =
-                    if (nativeAd.store == null || !builder.showStore) View.INVISIBLE else View.VISIBLE
+                    if (nativeAd.store.isNullOrEmpty() || !builder.showPrice) View.GONE else View.VISIBLE
                 text = nativeAd.store
             }
             (starRatingView as? RatingBar)?.apply {
-                visibility = if (nativeAd.starRating == null) View.INVISIBLE else View.VISIBLE
+                visibility = if (nativeAd.starRating == null || !builder.showRating) View.GONE else View.VISIBLE
                 rating = nativeAd.starRating?.toFloat() ?: 0.0f
             }
             (advertiserView as? TextView)?.apply {
                 visibility =
-                    if (nativeAd.advertiser == null || !builder.showAdvertiser) View.INVISIBLE else View.VISIBLE
+                    if (nativeAd.advertiser.isNullOrEmpty() || !builder.showAdvertiser) View.GONE else View.VISIBLE
                 text = nativeAd.advertiser
             }
 
@@ -411,12 +459,14 @@ class NativeAd(
 
     fun loadExitNativeAd(
         @ValidateAdUnitId adUnitId: String,
-        onSuccessListener: OnSuccessListenerNative<Boolean, NativeAd?>?
+        onAdLoadedNative: ((Boolean, NativeAd?) -> Unit)? = null
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
+        Log.e(TAG, "NativeAd: loadExitNativeAd requested for adUnitId=$adUnitId")
 
         if (!shouldShowAd(context)) {
-            onSuccessListener?.onSuccess(false, null)
+            Log.e(TAG, "NativeAd: loadExitNativeAd skipped (shouldShowAd returns false)")
+            onAdLoadedNative?.invoke(false, null)
             return
         }
 
@@ -424,7 +474,8 @@ class NativeAd(
         val adBuilder = AdLoader.Builder(context, adUnitId)
         adBuilder.forNativeAd { nativeAd ->
             exitNativeAd = nativeAd
-            onSuccessListener?.onSuccess(true, nativeAd)
+            Log.e(TAG, "NativeAd: loadExitNativeAd forNativeAd callback received")
+            onAdLoadedNative?.invoke(true, nativeAd)
         }
 
         val videoOptions = VideoOptions.Builder().setStartMuted(false).build()
@@ -434,26 +485,27 @@ class NativeAd(
         val adLoader = adBuilder.withAdListener(object : AdListener() {
             override fun onAdClicked() {
                 super.onAdClicked()
-                Log.d(TAG, "onExitNativeAdClicked()")
+                Log.e(TAG, "NativeAd: onExitNativeAdClicked()")
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
-                Log.d("ExitNative", "Monetization :- onExitNativeAdFailedToLoad() " + loadAdError.message)
+                Log.e(TAG, "NativeAd: onExitNativeAdFailedToLoad() error=${loadAdError.message}")
                 context.showToast("Failed to load exit native ad")
-                onSuccessListener?.onSuccess(false, null)
+                onAdLoadedNative?.invoke(false, null)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "ExitNative")
             }
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("ExitNative", "Monetization :- onExitNativeLoaded: Admob")
+                Log.e(TAG, "NativeAd: onExitNativeLoaded successfully")
                 context.showToast("Exit native ad loaded")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "ExitNative")
             }
 
             override fun onAdImpression() {
                 super.onAdImpression()
+                Log.e(TAG, "NativeAd: onExitNativeImpression()")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "ExitNative")
             }
         }).build()

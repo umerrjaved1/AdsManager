@@ -32,6 +32,7 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:layout_marginStart="12dp"
+            app:layout_goneMarginStart="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toTopOf="parent"
             tools:src="@mipmap/ic_launcher" />
@@ -45,6 +46,8 @@
             android:gravity="center_vertical"
             android:orientation="horizontal"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_goneMarginStart="0dp"
+            app:layout_goneMarginTop="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/ad_app_icon">
 
@@ -88,9 +91,17 @@
             android:textColor="@color/onSurfaceVariant"
             android:textSize="12sp"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_goneMarginStart="0dp"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/headline_container"
             tools:text="Financial freedom, the Sada way!" />
+
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/barrier_media_or_body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="bottom"
+            app:constraint_referenced_ids="ad_media_card,ad_body,headline_container" />
 
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/ad_call_to_action"
@@ -105,8 +116,9 @@
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_media_card" />
+            app:layout_constraintTop_toBottomOf="@id/barrier_media_or_body" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.gms.ads.nativead.NativeAdView>
