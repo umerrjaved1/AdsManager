@@ -15,4 +15,13 @@
     <!-- CTA Button Colors -->
     <color name="ad_cta_background">#BB86FC</color>
     <color name="ad_cta_ripple">#3700B3</color>
+
+    <!-- Ad attribution ("Ad" tag) -->
+    <color name="ad_badge_text">#B3B3B3</color>
+    <color name="ad_badge_stroke">#6E6E6E</color>
+
+    <!-- Shimmer placeholder block + sheen -->
+    <color name="ad_shimmer_block">#2A2F3A</color>
+    <color name="ad_shimmer_base">#2A2F3A</color>
+    <color name="ad_shimmer_highlight">#3E4452</color>
 </resources>

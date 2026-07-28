@@ -28,6 +28,6 @@
         android:elevation="8dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:contentDescription="Close Ad" />
+        android:contentDescription="@string/ads_close_ad" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

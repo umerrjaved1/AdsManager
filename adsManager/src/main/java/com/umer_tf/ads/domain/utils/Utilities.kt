@@ -6,9 +6,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.DisplayMetrics
-import android.util.Log
 import android.view.WindowMetrics
 import com.google.android.gms.ads.AdSize
+import com.umer_tf.ads.domain.consent.AdsConsentGate
 import com.umer_tf.ads.domain.core.AdMobManager
 
 object Utilities {
@@ -41,14 +41,28 @@ object Utilities {
             }
             return false
         } catch (e: Exception) {
-            Log.d("TAG", "isNetworkAvailable: ${e.message}")
+            AdsLog.d("TAG", "isNetworkAvailable: ${e.message}")
             return false
         }
     }
 
+    /**
+     * Single gate every ad request passes through: not a paying user, online, and permitted by the
+     * user's consent status.
+     *
+     * @see com.umer_tf.ads.domain.consent.AdsConsentGate
+     */
     fun shouldShowAd(context: Context?): Boolean {
-        return !AdMobManager.isPremium && isNetworkAvailable(context)
+        if (AdMobManager.isPremium) return false
+        if (!isNetworkAvailable(context)) return false
+        if (!AdsConsentGate.allowsAdRequests()) {
+            AdsLog.d(TAG, "shouldShowAd: blocked by consent status")
+            return false
+        }
+        return true
     }
+
+    private const val TAG = "AdsManager_Utilities"
 
     /**
      * Determines the screen width (less decorations) to use for the ad width and returns the adaptive ad size.

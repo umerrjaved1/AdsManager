@@ -3,7 +3,6 @@ package com.umer_tf.ads.domain.utils
 
 import android.content.Context
 import android.os.Bundle
-import android.util.Log
 import com.google.firebase.analytics.FirebaseAnalytics
 
 class AnalyticsManager private constructor(context: Context) {
@@ -34,7 +33,7 @@ class AnalyticsManager private constructor(context: Context) {
     }
 
     fun sendEvent(key: String, bundle: Bundle) {
-        Log.d("Analytics", "sendEvent: $key ${bundle.toString()}")
+        AdsLog.d("Analytics", "sendEvent: $key ${bundle.toString()}")
         firebaseAnalytics.logEvent(key, bundle)
     }
 }

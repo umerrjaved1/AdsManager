@@ -2,6 +2,7 @@ package com.umer_tf.ads.domain.ads.native_ad
 
 import android.widget.FrameLayout
 import com.facebook.shimmer.ShimmerFrameLayout
+import com.google.android.gms.ads.nativead.NativeAdOptions
 
 /**
  * NativeAdBuilder is a builder class for constructing native ad configurations.
@@ -30,7 +31,11 @@ class NativeAdBuilder private constructor(
     val strokeColor: String? = null,
     val strokeWidth: Int = 1,
     val shimmerBaseColor: String? = null,
-    val shimmerHighlightColor: String? = null
+    val shimmerHighlightColor: String? = null,
+    val adCornerRadius: Int = 12,
+    val badgeTextColor: String? = null,
+    val badgeStrokeColor: String? = null,
+    val adChoicesPlacement: Int = NativeAdOptions.ADCHOICES_TOP_RIGHT
 ) {
 
     /**
@@ -46,7 +51,10 @@ class NativeAdBuilder private constructor(
         private var showHeadline: Boolean = true
         private var showBody: Boolean = false
         private var showCallToAction: Boolean = true
-        private var showAdChoices: Boolean = false
+        // AdMob policy: the AdChoices overlay must be present. Defaulted on so an integrator cannot
+        // ship a non-compliant ad by simply not calling the setter.
+        private var showAdChoices: Boolean = true
+        private var adChoicesPlacement: Int = NativeAdOptions.ADCHOICES_TOP_RIGHT
         private var adBgColor: String? = null
         private var ctaBgColor: String? = null
         private var ctaTextColor: String? = null
@@ -58,6 +66,9 @@ class NativeAdBuilder private constructor(
         private var strokeWidth: Int = 1
         private var shimmerBaseColor: String? = null
         private var shimmerHighlightColor: String? = null
+        private var adCornerRadius: Int = 12
+        private var badgeTextColor: String? = null
+        private var badgeStrokeColor: String? = null
 
         fun setLayout(layout: Int) = apply { this.layout = layout }
         fun setFrameLayout(frameLayout: FrameLayout?) = apply { this.frameLayout = frameLayout }
@@ -82,15 +93,39 @@ class NativeAdBuilder private constructor(
         fun setStrokeColor(strokeColor: String?) = apply { this.strokeColor = strokeColor }
         fun setStrokeWidth(strokeWidth: Int) = apply { this.strokeWidth = strokeWidth }
 
+        /** Corner radius (dp) of the ad card background. */
+        fun setAdCornerRadius(adCornerRadius: Int) = apply { this.adCornerRadius = adCornerRadius }
+
+        /** Colours of the "Ad" attribution label. Visibility is not configurable, by policy. */
+        fun setBadgeColors(textColor: String?, strokeColor: String? = textColor) = apply {
+            this.badgeTextColor = textColor
+            this.badgeStrokeColor = strokeColor
+        }
+
+        /**
+         * Where the AdChoices overlay is drawn. One of the `NativeAdOptions.ADCHOICES_*` constants.
+         */
+        fun setAdChoicesPlacement(placement: Int) = apply { this.adChoicesPlacement = placement }
+
         /**
          * Customizes shimmer colors specifically for this native ad container.
+         *
+         * Only the shimmer is affected - this no longer drags the rest of the ad into the light
+         * palette as a side effect, which used to wash out dark-themed ads.
          */
         fun setShimmerColor(baseColor: String?, highlightColor: String?) = apply {
             this.shimmerBaseColor = baseColor
             this.shimmerHighlightColor = highlightColor
             if (baseColor != null && highlightColor != null) {
-                NativeAdTheme.light(shimmerBaseColor = baseColor, shimmerHighlightColor = highlightColor)
-                    .applyShimmerTo(shimmerFrameLayout)
+                NativeAdTheme(
+                    adBgColor = adBgColor ?: "#FFFFFF",
+                    adTitleColor = adTitleColor ?: "#111827",
+                    adBodyColor = adBodyColor ?: "#4B5563",
+                    ctaBgColor = ctaBgColor ?: "#2563EB",
+                    ctaTextColor = ctaTextColor ?: "#FFFFFF",
+                    shimmerBaseColor = baseColor,
+                    shimmerHighlightColor = highlightColor
+                ).applyShimmerTo(shimmerFrameLayout)
             }
         }
 
@@ -109,6 +144,9 @@ class NativeAdBuilder private constructor(
             this.ctaRadius = theme.ctaRadius
             this.shimmerBaseColor = theme.shimmerBaseColor
             this.shimmerHighlightColor = theme.shimmerHighlightColor
+            this.adCornerRadius = theme.adCornerRadius
+            this.badgeTextColor = theme.badgeTextColor
+            this.badgeStrokeColor = theme.badgeStrokeColor
 
             theme.applyShimmerTo(shimmerFrameLayout)
         }
@@ -138,7 +176,11 @@ class NativeAdBuilder private constructor(
                 strokeColor,
                 strokeWidth,
                 shimmerBaseColor,
-                shimmerHighlightColor
+                shimmerHighlightColor,
+                adCornerRadius,
+                badgeTextColor,
+                badgeStrokeColor,
+                adChoicesPlacement
             )
         }
     }

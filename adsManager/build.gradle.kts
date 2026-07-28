@@ -33,6 +33,15 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            // The pure logic under test routes its logging through AdsLog -> android.util.Log, which
+            // throws "not mocked" in a plain JVM test. Returning defaults keeps these tests
+            // dependency-free instead of pulling in Robolectric just to swallow log calls.
+            isReturnDefaultValues = true
+        }
+    }
+
     publishing {
         singleVariant("release") {
             withSourcesJar()
@@ -78,7 +87,7 @@ afterEvaluate {
                 from(components.getByName("release"))
                 groupId = "com.umer_tf.ads"
                 artifactId = "ads"
-                version = "1.0.3"
+                version = "1.1.0"
             }
         }
         repositories {

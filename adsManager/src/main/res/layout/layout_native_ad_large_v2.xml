@@ -51,8 +51,8 @@
                 android:paddingTop="2dp"
                 android:paddingEnd="6dp"
                 android:paddingBottom="2dp"
-                android:text="Ad"
-                android:textColor="#616161"
+                android:text="@string/ad"
+                android:textColor="@color/ad_badge_text"
                 android:textSize="10sp" />
 
             <RatingBar

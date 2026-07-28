@@ -1,7 +1,10 @@
 package com.umer_tf.ads.domain.ads.native_ad
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.view.View
+import android.view.ViewGroup
 import androidx.core.graphics.toColorInt
 import com.facebook.shimmer.Shimmer
 import com.facebook.shimmer.ShimmerFrameLayout
@@ -21,10 +24,20 @@ data class NativeAdTheme(
     val strokeWidth: Int = 1,
     val ctaRadius: Int = 16,
     val shimmerBaseColor: String? = null,
-    val shimmerHighlightColor: String? = null
+    val shimmerHighlightColor: String? = null,
+    /** Corner radius (dp) of the ad card background. Kept separate from [ctaRadius]. */
+    val adCornerRadius: Int = 12,
+    /** Colour of the "Ad" attribution label. AdMob policy requires it to stay legible. */
+    val badgeTextColor: String = adBodyColor,
+    /** Outline colour of the "Ad" attribution label. */
+    val badgeStrokeColor: String = badgeTextColor
 ) {
     /**
      * Applies the configured shimmer colors programmatically to a ShimmerFrameLayout.
+     *
+     * The sheen is driven by [Shimmer], but the placeholder blocks are plain drawables, so they are
+     * tinted to [shimmerBaseColor] as well - otherwise a custom (or dark) theme shows the library's
+     * light-grey blocks under a correctly coloured sheen.
      */
     fun applyShimmerTo(shimmerFrameLayout: ShimmerFrameLayout?) {
         if (shimmerFrameLayout == null) return
@@ -44,7 +57,21 @@ data class NativeAdTheme(
                 .build()
 
             shimmerFrameLayout.setShimmer(shimmer)
+            tintPlaceholderBlocks(shimmerFrameLayout, base)
             shimmerFrameLayout.startShimmer()
+        }
+    }
+
+    private fun tintPlaceholderBlocks(view: View, color: Int) {
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                tintPlaceholderBlocks(view.getChildAt(i), color)
+            }
+            // Containers only carry a background when they *are* a block (e.g. a CardView stand-in).
+            if (view.childCount > 0) return
+        }
+        if (view.background != null) {
+            view.backgroundTintList = ColorStateList.valueOf(color)
         }
     }
 
@@ -66,9 +93,15 @@ data class NativeAdTheme(
             strokeWidth: Int = 1,
             ctaRadius: Int = 16,
             shimmerBaseColor: String = "#E0E0E0",
-            shimmerHighlightColor: String = "#F5F5F5"
+            shimmerHighlightColor: String = "#F5F5F5",
+            adCornerRadius: Int = 12,
+            badgeTextColor: String = "#616161",
+            badgeStrokeColor: String = "#808080"
         ): NativeAdTheme {
             return NativeAdTheme(
+                adCornerRadius = adCornerRadius,
+                badgeTextColor = badgeTextColor,
+                badgeStrokeColor = badgeStrokeColor,
                 adBgColor = adBgColor,
                 adTitleColor = adTitleColor,
                 adBodyColor = adBodyColor,
@@ -100,9 +133,15 @@ data class NativeAdTheme(
             strokeWidth: Int = 1,
             ctaRadius: Int = 16,
             shimmerBaseColor: String = "#2A2F3A",
-            shimmerHighlightColor: String = "#3E4452"
+            shimmerHighlightColor: String = "#3E4452",
+            adCornerRadius: Int = 12,
+            badgeTextColor: String = "#B3B3B3",
+            badgeStrokeColor: String = "#6E6E6E"
         ): NativeAdTheme {
             return NativeAdTheme(
+                adCornerRadius = adCornerRadius,
+                badgeTextColor = badgeTextColor,
+                badgeStrokeColor = badgeStrokeColor,
                 adBgColor = adBgColor,
                 adTitleColor = adTitleColor,
                 adBodyColor = adBodyColor,

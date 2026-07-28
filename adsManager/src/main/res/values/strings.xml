@@ -4,4 +4,6 @@
     <string name="ad">Ad</string>
     <string name="install">Install</string>
     <string name="ads_app_icon">App Icon</string>
+    <string name="ads_close_ad">Close Ad</string>
+    <string name="ads_sponsored">Sponsored</string>
 </resources>

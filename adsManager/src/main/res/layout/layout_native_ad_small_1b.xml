@@ -19,7 +19,7 @@
             android:paddingHorizontal="6dp"
             android:paddingVertical="2dp"
             android:text="@string/ad"
-            android:textColor="#808080"
+            android:textColor="@color/ad_badge_text"
             android:textSize="10sp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"

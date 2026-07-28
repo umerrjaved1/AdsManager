@@ -1,7 +1,7 @@
 package com.umer_tf.ads.domain.core
 
+import android.app.Activity
 import android.app.Application
-import android.util.Log
 import com.google.android.gms.ads.MobileAds
 import com.umer_tf.ads.domain.ads.app_open.AppOpenAdLoader
 import com.umer_tf.ads.domain.ads.banner.BannerAdLoader
@@ -11,7 +11,14 @@ import com.umer_tf.ads.domain.ads.rewarded.RewardedAdLoader
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import androidx.annotation.LayoutRes
+import com.umer_tf.ads.domain.consent.AdsConsentGate
+import com.umer_tf.ads.domain.consent.AdsConsentManager
+import com.umer_tf.ads.domain.analytics.AdEventListener
+import com.umer_tf.ads.domain.analytics.AdEvents
+import com.umer_tf.ads.domain.analytics.AdType
 import com.umer_tf.ads.domain.utils.AdController
+import com.umer_tf.ads.domain.utils.AdLoadingDialogConfig
+import com.umer_tf.ads.domain.utils.AdsLog
 import com.umer_tf.ads.domain.utils.LoadingDialogUtil
 import com.umer_tf.ads.domain.utils.TimeManager
 import kotlinx.coroutines.CoroutineScope
@@ -38,41 +45,109 @@ open class AdMobManager(
     val interstitialAdLoader = InterstitialAdLoader(application, adController)
 
     @JvmField
-    val nativeAdLoader = NativeAd(application)
+    val nativeAdLoader = NativeAd(application).also { it.adTtlMs = adController.nativeAdTtlMs }
 
     @JvmField
     val rewardedAdLoader = RewardedAdLoader(application, adController)
 
     private var isInitialized = false
+    private var requestConfig: AdsRequestConfig? = null
 
     /**
-     * Initializes the AdMob SDK.
+     * Consent manager backed by Google's User Messaging Platform.
      *
-     * @deprecated This method is obsolete and should not be called. AdMob SDK initialization is now
-     * handled automatically by the system or through alternative mechanisms. Use of this method is
-     * unnecessary and may lead to redundant initialization.
-     *
-     * @param onInitializationComplete Callback to be invoked when initialization is complete.
-     * This callback is no longer required as the method is obsolete.
+     * Prefer [gatherConsent] over driving this directly - it is what publishes the result to
+     * [AdsConsentGate], which is what actually gates ad requests.
      */
-    @Deprecated("This method is obsolete. AdMob SDK initialization is handled automatically.")
-    fun initialize(onInitializationComplete: () -> Unit) {
+    val consentManager: AdsConsentManager by lazy { AdsConsentManager(application) }
+
+    /**
+     * Initializes the AdMob SDK and starts the interstitial frequency-capping clock.
+     *
+     * This must be called once (typically from `Application.onCreate`) before requesting ads. Nothing
+     * else in the library initializes [MobileAds], so skipping it leaves every request unfilled.
+     *
+     * If you target the EEA, call [gatherConsent] first (or instead - it initializes for you), so that
+     * no request is made before the user has answered.
+     *
+     * @param onInitializationComplete Invoked on the main thread once initialization has finished.
+     */
+    @JvmOverloads
+    fun initialize(onInitializationComplete: (() -> Unit)? = null) {
         TimeManager.getInstance().start()
-        if (!isInitialized) {
-            CoroutineScope(Dispatchers.IO).launch {
-                MobileAds.initialize(application) { initializationStatus ->
-                    // Log or handle initialization status if needed
-                    Log.d(TAG, "Monetization:- AdMob intialized: $initializationStatus")
-                    isInitialized = true
-                    CoroutineScope(Dispatchers.Main).launch {
-                        onInitializationComplete()
-                    }
+        if (isInitialized) {
+            onInitializationComplete?.invoke()
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            // Audience tagging must be in place before the first request, not after it.
+            requestConfig?.applyToSdk()
+            MobileAds.initialize(application) { initializationStatus ->
+                AdsLog.d(TAG, "Monetization:- AdMob initialized: $initializationStatus")
+                isInitialized = true
+                CoroutineScope(Dispatchers.Main).launch {
+                    onInitializationComplete?.invoke()
                 }
             }
         }
-        else{
-            onInitializationComplete()
+    }
+
+    /**
+     * Gathers user consent, then initializes the AdMob SDK - the correct order for EEA traffic.
+     *
+     * Until this completes, [com.umer_tf.ads.domain.utils.Utilities.shouldShowAd] reports false and
+     * every loader short-circuits, so no request can escape ahead of the user's decision. Call it from
+     * your launcher/splash Activity:
+     *
+     * ```kotlin
+     * AdMobManager.getInstance(application).gatherConsent(this) { canRequestAds ->
+     *     if (canRequestAds) startLoadingAds()
+     * }
+     * ```
+     *
+     * Safe to call on every launch: UMP only shows a form when one is actually required.
+     *
+     * @param activity Activity used to host the consent form.
+     * @param isTest Forces the EEA debug geography so the form can be exercised outside Europe.
+     * @param onConsentComplete Invoked with `canRequestAds` once consent settles and the SDK is up.
+     */
+    @JvmOverloads
+    fun gatherConsent(
+        activity: Activity,
+        isTest: Boolean = false,
+        onConsentComplete: ((Boolean) -> Unit)? = null
+    ) {
+        consentManager.gatherConsent(activity, isTest) { canRequestAds ->
+            AdsLog.d(TAG, "gatherConsent settled: canRequestAds=$canRequestAds")
+            initialize { onConsentComplete?.invoke(canRequestAds) }
         }
+    }
+
+    /**
+     * Registers the single observer for every ad event across every format - load, impression, click,
+     * failure, show, dismiss and revenue - each carrying the ad unit id and [AdType].
+     *
+     * This is the hook for ad-revenue attribution (AppsFlyer, Adjust, Singular, your own backend) and
+     * for any custom ad analytics.
+     *
+     * @see AdEventListener
+     */
+    fun setAdEventListener(listener: AdEventListener?): AdMobManager {
+        AdEvents.setListener(listener)
+        return this
+    }
+
+    /**
+     * Sets the global AdMob request configuration - COPPA / under-age tagging, max content rating and
+     * test devices. Must be set before [initialize].
+     *
+     * @see AdsRequestConfig
+     */
+    fun setRequestConfig(config: AdsRequestConfig): AdMobManager {
+        requestConfig = config
+        // Applying immediately as well covers callers who configure after initialize().
+        if (isInitialized) config.applyToSdk()
+        return this
     }
 
     /**
@@ -82,8 +157,10 @@ open class AdMobManager(
      * @return The current instance of AdMobManager.
      */
     fun setAppOpenAdResumeId( @ValidateAdUnitId appOpenAdResumeId: String): AdMobManager {
-        AdUnitIdValidator.validateAdUnitId(appOpenAdResumeId)
-        adController.appOpenAdResumeId = appOpenAdResumeId
+        // A malformed id leaves the previous value in place rather than poisoning the controller.
+        if (AdUnitIdValidator.validateAdUnitId(appOpenAdResumeId)) {
+            adController.appOpenAdResumeId = appOpenAdResumeId
+        }
         return this
     }
 
@@ -94,8 +171,9 @@ open class AdMobManager(
      * @return The current instance of AdMobManager.
      */
     fun setAppOpenAdStartId( @ValidateAdUnitId appOpenAdStartId: String): AdMobManager {
-        AdUnitIdValidator.validateAdUnitId(appOpenAdStartId)
-        adController.appOpenAdStartId = appOpenAdStartId
+        if (AdUnitIdValidator.validateAdUnitId(appOpenAdStartId)) {
+            adController.appOpenAdStartId = appOpenAdStartId
+        }
         return this
     }
 
@@ -167,6 +245,26 @@ open class AdMobManager(
     }
 
     /**
+     * Registers a live source of truth for premium status, consulted on every ad request.
+     *
+     * [setPremium] is a snapshot: it defaults to false, so between process start and the app setting
+     * it, a paying user can be served ads. A provider closes that window because it is read at request
+     * time - point it at whatever you already have (billing cache, prefs, DB) and the library never
+     * needs its own storage:
+     *
+     * ```kotlin
+     * AdMobManager.getInstance(app).setPremiumProvider { billingRepo.isSubscribed }
+     * ```
+     *
+     * The provider wins over [setPremium] whenever it is registered. Called on the calling thread, so
+     * keep it cheap - no disk or network reads.
+     */
+    fun setPremiumProvider(provider: (() -> Boolean)?): AdMobManager {
+        premiumProvider = provider
+        return this
+    }
+
+    /**
      * Sets the splash status to only show App open ad at start.
      * Set this to false when splash screen is destroyed to show the Open ad at resume.
      *
@@ -193,7 +291,31 @@ open class AdMobManager(
      */
     fun setLoadingDialogLayout(@LayoutRes layoutResId: Int): AdMobManager {
         adController.loadingDialogLayoutResId = layoutResId
-        LoadingDialogUtil.customLoadingLayoutResId = layoutResId
+        LoadingDialogUtil.setGlobalLoadingLayoutResId(layoutResId)
+        return this
+    }
+
+    /**
+     * Sets the loading dialog used by interstitial and rewarded ads. Covers everything from "same
+     * layout, different wording" to supplying your own [android.app.Dialog].
+     *
+     * @see AdLoadingDialogConfig
+     */
+    fun setLoadingDialog(config: AdLoadingDialogConfig): AdMobManager {
+        adController.loadingDialogConfig = config
+        adController.loadingDialogLayoutResId = config.layoutResId
+        LoadingDialogUtil.globalConfig = config
+        return this
+    }
+
+    /**
+     * Sets how long the loading dialog stays visible after an interstitial loads, before the ad is
+     * shown. Defaults to [AdController.DEFAULT_INTERSTITIAL_DIALOG_DELAY_MS] (1500 ms).
+     *
+     * @param delayMs The delay in milliseconds.
+     */
+    fun setInterstitialDialogDelay(delayMs: Long): AdMobManager {
+        adController.interstitialDialogDelayMs = delayMs
         return this
     }
 
@@ -202,8 +324,16 @@ open class AdMobManager(
         @Volatile
         private var instance: AdMobManager? = null
 
+        /**
+         * Current premium status. Reads through [premiumProvider] when one is registered, otherwise
+         * returns the value last set via [setPremium].
+         */
         @JvmStatic
         var isPremium: Boolean = false
+            get() = premiumProvider?.invoke() ?: field
+
+        @Volatile
+        internal var premiumProvider: (() -> Boolean)? = null
 
         /**
          * Gets the singleton instance of AdMobManager.

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    Shimmer placeholder matching admob_small_native_media.xml, the library's default native
+    layout (83sdp media on the left, icon + headline + badge/body on the right, full-width CTA).
+-->
+<com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:shimmer_auto_start="true"
+    app:shimmer_base_alpha="0.95"
+    app:shimmer_duration="1200"
+    app:shimmer_highlight_alpha="0.35">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_83sdp"
+            android:orientation="horizontal">
+
+            <View
+                android:id="@+id/ad_media_card"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/adlibrary_shimmer_block" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:id="@+id/ad_app_icon"
+                        android:layout_width="@dimen/_35sdp"
+                        android:layout_height="@dimen/_35sdp"
+                        android:background="@drawable/adlibrary_shimmer_block" />
+
+                    <View
+                        android:id="@+id/ad_headline"
+                        android:layout_width="0dp"
+                        android:layout_height="14dp"
+                        android:layout_marginStart="5dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/adlibrary_shimmer_block" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:id="@+id/ad_badge"
+                        android:layout_width="24dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/adlibrary_shimmer_block" />
+
+                    <View
+                        android:id="@+id/ad_body_line1"
+                        android:layout_width="0dp"
+                        android:layout_height="10dp"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/adlibrary_shimmer_block" />
+                </LinearLayout>
+
+                <View
+                    android:id="@+id/ad_body_line2"
+                    android:layout_width="110dp"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="6dp"
+                    android:background="@drawable/adlibrary_shimmer_block" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:id="@+id/ad_call_to_action"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_30sdp"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/adlibrary_shimmer_block" />
+    </LinearLayout>
+</com.facebook.shimmer.ShimmerFrameLayout>

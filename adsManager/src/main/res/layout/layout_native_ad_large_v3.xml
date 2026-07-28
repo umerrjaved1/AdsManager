@@ -29,7 +29,7 @@
             android:paddingTop="2dp"
             android:paddingEnd="6dp"
             android:paddingBottom="2dp"
-            android:text="Ad"
+            android:text="@string/ad"
             android:textColor="@android:color/white"
             android:textSize="10sp"
             app:layout_constraintStart_toStartOf="@id/ad_media"

@@ -1,87 +1,91 @@
 package com.umer_tf.ads.domain.annotations
 
+import com.umer_tf.ads.BuildConfig
+import com.umer_tf.ads.domain.utils.AdsLog
+
 object AdUnitIdValidator {
-    // AdMob ad unit ID patterns
-    private const val BANNER_AD_PATTERN = "^ca-app-pub-\\d{16,}/\\d{10}$"
-    private const val INTERSTITIAL_AD_PATTERN = "^ca-app-pub-\\d{16,}/\\d{10}$"
-    private const val REWARDED_AD_PATTERN = "^ca-app-pub-\\d{16,}/\\d{10}$"
-    private const val NATIVE_AD_PATTERN = "^ca-app-pub-\\d{16,}/\\d{10}$"
-    private const val APP_OPEN_AD_PATTERN = "^ca-app-pub-\\d{16,}/\\d{10}$"
-    
-    // General pattern that matches all AdMob ad unit IDs
-    private const val GENERAL_AD_PATTERN = "^ca-app-pub-\\d{16,}/\\d{10}$"
-    
-    // Test ad unit ID pattern (for testing purposes)
-    private const val TEST_AD_PATTERN = "^ca-app-pub-3940256099942544/\\d{10}$"
+
+    private const val TAG = "AdsManager_AdUnitId"
+
+    /** All AdMob ad unit ids share one shape, regardless of format. */
+    private val GENERAL_AD_PATTERN = Regex("^ca-app-pub-\\d{16,}/\\d{10}$")
+
+    /** Google's public test publisher id. */
+    private val TEST_AD_PATTERN = Regex("^ca-app-pub-3940256099942544/\\d{10}$")
 
     /**
-     * Validates an ad unit ID using general pattern.
-     * @param adUnitId The ad unit ID to validate.
+     * When true, a malformed ad unit id throws instead of being skipped.
+     *
+     * Defaults to debug-only. Ad unit ids in a product factory usually arrive from a per-app config
+     * file or build field, and a single typo used to crash the app at the ad call site; in release the
+     * right behaviour is to log loudly and show no ad. Keeping it strict in debug means the typo still
+     * surfaces immediately during development.
      */
-    fun validateAdUnitId(adUnitId: String) {
-        if (!isValidAdUnitId(adUnitId)) {
-            throw IllegalArgumentException(
-                "Invalid Ad Unit ID format. Expected format: ca-app-pub-{publisher-id}/{ad-id}, " +
-                "provided: $adUnitId"
-            )
+    @JvmStatic
+    var strictMode: Boolean = BuildConfig.DEBUG
+
+    /**
+     * Validates an ad unit id.
+     *
+     * @return true when [adUnitId] is well formed. Callers must skip the ad request when this returns
+     *   false and report failure through their own callback.
+     * @throws IllegalArgumentException only when [strictMode] is on.
+     */
+    @JvmStatic
+    fun validateAdUnitId(adUnitId: String): Boolean {
+        if (isValidAdUnitId(adUnitId)) {
+            warnIfTestIdInRelease(adUnitId)
+            return true
         }
+
+        val message = "Invalid Ad Unit ID format. Expected ca-app-pub-{16-digit-publisher-id}/" +
+            "{10-digit-ad-id}, provided: \"$adUnitId\""
+        if (strictMode) throw IllegalArgumentException(message)
+        AdsLog.e(TAG, "$message - skipping this ad request.")
+        return false
     }
-    
-    /**
-     * Validates a banner ad unit ID.
-     * @param adUnitId The banner ad unit ID to validate.
-     */
-    fun validateBannerAdUnitId(adUnitId: String) {
-        validateAdUnitId(adUnitId)
-    }
-    
-    /**
-     * Validates an interstitial ad unit ID.
-     * @param adUnitId The interstitial ad unit ID to validate.
-     */
-    fun validateInterstitialAdUnitId(adUnitId: String) {
-        validateAdUnitId(adUnitId)
-    }
-    
-    /**
-     * Validates a rewarded ad unit ID.
-     * @param adUnitId The rewarded ad unit ID to validate.
-     */
-    fun validateRewardedAdUnitId(adUnitId: String) {
-        validateAdUnitId(adUnitId)
-    }
-    
-    /**
-     * Validates a native ad unit ID.
-     * @param adUnitId The native ad unit ID to validate.
-     */
-    fun validateNativeAdUnitId(adUnitId: String) {
-        validateAdUnitId(adUnitId)
-    }
-    
-    /**
-     * Validates an app open ad unit ID.
-     * @param adUnitId The app open ad unit ID to validate.
-     */
-    fun validateAppOpenAdUnitId(adUnitId: String) {
-        validateAdUnitId(adUnitId)
-    }
-    
+
+    @JvmStatic
+    fun validateBannerAdUnitId(adUnitId: String): Boolean = validateAdUnitId(adUnitId)
+
+    @JvmStatic
+    fun validateInterstitialAdUnitId(adUnitId: String): Boolean = validateAdUnitId(adUnitId)
+
+    @JvmStatic
+    fun validateRewardedAdUnitId(adUnitId: String): Boolean = validateAdUnitId(adUnitId)
+
+    @JvmStatic
+    fun validateNativeAdUnitId(adUnitId: String): Boolean = validateAdUnitId(adUnitId)
+
+    @JvmStatic
+    fun validateAppOpenAdUnitId(adUnitId: String): Boolean = validateAdUnitId(adUnitId)
+
     /**
      * Checks if an ad unit ID is valid.
      * @param adUnitId The ad unit ID to check.
      * @return true if valid, false otherwise.
      */
-    fun isValidAdUnitId(adUnitId: String): Boolean {
-        return adUnitId.matches(GENERAL_AD_PATTERN.toRegex())
-    }
-    
+    @JvmStatic
+    fun isValidAdUnitId(adUnitId: String): Boolean = GENERAL_AD_PATTERN.matches(adUnitId)
+
     /**
-     * Checks if an ad unit ID is a test ad unit ID.
-     * @param adUnitId The ad unit ID to check.
-     * @return true if it's a test ad unit ID, false otherwise.
+     * Checks if an ad unit ID is one of Google's test ad unit IDs.
+     *
+     * Test ids reaching a release build is otherwise silent, and shows up only as zero revenue.
      */
-    fun isTestAdUnitId(adUnitId: String): Boolean {
-        return adUnitId.matches(TEST_AD_PATTERN.toRegex())
+    @JvmStatic
+    fun isTestAdUnitId(adUnitId: String): Boolean = TEST_AD_PATTERN.matches(adUnitId)
+
+    /** Logs a warning, once per id, when a Google test ad unit id is used outside a debug build. */
+    @JvmStatic
+    fun warnIfTestIdInRelease(adUnitId: String) {
+        if (BuildConfig.DEBUG || !isTestAdUnitId(adUnitId)) return
+        if (warnedTestIds.add(adUnitId)) {
+            AdsLog.w(TAG, "Google TEST ad unit id \"$adUnitId\" is in use outside a debug build.")
+        }
     }
+
+    private val warnedTestIds = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    )
 }

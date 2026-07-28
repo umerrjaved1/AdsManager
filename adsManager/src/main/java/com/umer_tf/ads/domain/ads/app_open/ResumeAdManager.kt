@@ -3,17 +3,17 @@ package com.umer_tf.ads.domain.ads.app_open
 import android.app.Activity
 import android.app.Application
 import android.content.Context
-import android.util.Log
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.appopen.AppOpenAd
-import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
+import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
+import com.umer_tf.ads.domain.analytics.AdType
+import com.umer_tf.ads.domain.analytics.AdEvents
 import com.umer_tf.ads.domain.utils.AdController
-import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_DISMISSED
-import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_SHOWN
-import com.umer_tf.ads.domain.utils.AnalyticsManager
+import com.umer_tf.ads.domain.utils.AdsLog
+import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,13 +28,23 @@ internal class ResumeAdManager(
 
     companion object {
         private const val TAG = "AdsManager_AppOpen_Resume"
-        private const val AD_EXPIRATION_TIME_MS = 4 * 60 * 60 * 1000L // 4 hours
     }
 
     fun loadAd(context: Context, onAdLoaded: ((Boolean) -> Unit)? = null) {
-        Log.e(TAG, "ResumeAdManager: loadAd requested")
+        AdsLog.d(TAG, "ResumeAdManager: loadAd requested")
         if (isAdAvailable() || isLoadingAd) {
-            Log.e(TAG, "ResumeAdManager: loadAd skipped (already available or loading)")
+            AdsLog.e(TAG, "ResumeAdManager: loadAd skipped (already available or loading)")
+            onAdLoaded?.invoke(false)
+            return
+        }
+        // App open ads used to bypass this gate entirely, so they still requested for premium users,
+        // offline, and before consent was gathered.
+        if (!shouldShowAd(context)) {
+            AdsLog.e(TAG, "ResumeAdManager: loadAd skipped (shouldShowAd returns false)")
+            onAdLoaded?.invoke(false)
+            return
+        }
+        if (!AdUnitIdValidator.validateAdUnitId(adController.appOpenAdResumeId)) {
             onAdLoaded?.invoke(false)
             return
         }
@@ -55,9 +65,9 @@ internal class ResumeAdManager(
         onShowAdCompleteListener: ((Boolean) -> Unit)? = null,
         onStateChange: (Boolean) -> Unit
     ) {
-        Log.e(TAG, "ResumeAdManager: showAd requested")
+        AdsLog.d(TAG, "ResumeAdManager: showAd requested")
         if (activity == null || !isAdAvailable()) {
-            Log.e(TAG, "ResumeAdManager: showAd skipped (activity null or ad not available)")
+            AdsLog.e(TAG, "ResumeAdManager: showAd skipped (activity null or ad not available)")
             onShowAdCompleteListener?.invoke(false)
             return
         }
@@ -70,13 +80,16 @@ internal class ResumeAdManager(
     fun isAdAvailable(): Boolean = appResumeAd != null && !isAdExpired()
 
     fun destroy() {
-        Log.e(TAG, "ResumeAdManager: destroy called")
+        AdsLog.d(TAG, "ResumeAdManager: destroy called")
         appResumeAd = null
         isLoadingAd = false
         loadTime = 0
     }
 
-    private fun isAdExpired(): Boolean = System.currentTimeMillis() - loadTime > AD_EXPIRATION_TIME_MS
+    // TTL lives on AdController so it can be tuned instead of being a private constant.
+    // Default is unchanged at 4 hours.
+    private fun isAdExpired(): Boolean =
+        System.currentTimeMillis() - loadTime > adController.appOpenAdTtlMs
 
     private fun createLoadCallback(onAdLoaded: ((Boolean) -> Unit)?) = 
         object : AppOpenAd.AppOpenAdLoadCallback() {
@@ -84,13 +97,15 @@ internal class ResumeAdManager(
                 appResumeAd = ad
                 isLoadingAd = false
                 loadTime = System.currentTimeMillis()
-                Log.e(TAG, "ResumeAdManager: onAdLoaded successfully")
+                AdsLog.d(TAG, "ResumeAdManager: onAdLoaded successfully")
+                AdEvents.loaded(application, adController.appOpenAdResumeId, AdType.APP_OPEN_RESUME)
                 onAdLoaded?.invoke(true)
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 isLoadingAd = false
-                Log.e(TAG, "ResumeAdManager: onAdFailedToLoad error=${loadAdError.message}")
+                AdsLog.e(TAG, "ResumeAdManager: onAdFailedToLoad error=${loadAdError.message}")
+                AdEvents.failedToLoad(application, adController.appOpenAdResumeId, AdType.APP_OPEN_RESUME, loadAdError)
                 onAdLoaded?.invoke(false)
             }
         }
@@ -103,35 +118,37 @@ internal class ResumeAdManager(
             override fun onAdDismissedFullScreenContent() {
                 appResumeAd = null
                 onStateChange(false)
-                Log.e(TAG, "ResumeAdManager: onAdDismissedFullScreenContent")
-                AnalyticsManager.getInstance(application).sendAnalytics(AD_DISMISSED, "OpenAd_Resume")
+                AdsLog.d(TAG, "ResumeAdManager: onAdDismissedFullScreenContent")
+                AdEvents.dismissed(application, adController.appOpenAdResumeId, AdType.APP_OPEN_RESUME)
                 onShowAdCompleteListener?.invoke(true)
             }
 
             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
                 appResumeAd = null
                 onStateChange(false)
-                Log.e(TAG, "ResumeAdManager: onAdFailedToShowFullScreenContent error=${adError.message}")
+                AdsLog.e(TAG, "ResumeAdManager: onAdFailedToShowFullScreenContent error=${adError.message}")
+                AdEvents.failedToLoad(application, adController.appOpenAdResumeId, AdType.APP_OPEN_RESUME, adError)
                 onShowAdCompleteListener?.invoke(false)
             }
 
             override fun onAdShowedFullScreenContent() {
-                AnalyticsManager.getInstance(application).sendAnalytics(AD_SHOWN, "OpenAd_Resume")
-                Log.e(TAG, "ResumeAdManager: onAdShowedFullScreenContent")
+                AdEvents.showed(application, adController.appOpenAdResumeId, AdType.APP_OPEN_RESUME)
+                AdsLog.d(TAG, "ResumeAdManager: onAdShowedFullScreenContent")
+            }
+
+            override fun onAdClicked() {
+                super.onAdClicked()
+                AdsLog.d(TAG, "ResumeAdManager: onAdClicked")
+                AdEvents.clicked(application, adController.appOpenAdResumeId, AdType.APP_OPEN_RESUME)
             }
         }
 
         appResumeAd?.setOnPaidEventListener { adValue ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    AdsAnalytics.logAppsFlyerRevenue(
-                        appResumeAd?.adUnitId ?: "",
-                        "OpenAd_Resume",
-                        adValue,
-                        application
-                    )
+                    AdEvents.revenue(application, appResumeAd?.adUnitId ?: "", AdType.APP_OPEN_RESUME, adValue)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to log resume ad revenue", e)
+                    AdsLog.e(TAG, "Failed to log resume ad revenue", e)
                 }
             }
         }

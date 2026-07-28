@@ -3,13 +3,13 @@ package com.umer_tf.ads.domain.ads.app_open
 import android.app.Activity
 import android.app.Application
 import android.content.Context
-import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.android.gms.ads.AdActivity
 import com.umer_tf.ads.domain.core.AdMobManager
 import com.umer_tf.ads.domain.utils.AdController
+import com.umer_tf.ads.domain.utils.AdsLog
 
 class AppOpenAdLoader(
     private val application: Application,
@@ -23,19 +23,22 @@ class AppOpenAdLoader(
     var isShowingAd = false
     private var startTime = 0L
     
-    @JvmField
-    var isPremium = false
+    /**
+     * Premium status, read live rather than snapshotted.
+     *
+     * This used to be copied from [AdMobManager.isPremium] in `init` - which runs when the manager is
+     * constructed, before the app has had a chance to set it - so a paying user could still be shown
+     * app open ads for the whole process lifetime.
+     */
+    val isPremium: Boolean get() = AdMobManager.isPremium
 
     companion object {
         private const val TAG = "AdsManager_AppOpen"
     }
 
     init {
-        isPremium = getPremiumPref()
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
     }
-
-    private fun getPremiumPref(): Boolean = AdMobManager.isPremium
 
     override fun onResume(owner: LifecycleOwner) {
         super.onResume(owner)
@@ -81,7 +84,7 @@ class AppOpenAdLoader(
         isShowingAd = false
         startTime = 0L
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
-        Log.e(TAG, "AppOpenAdLoader: destroyAds called")
+        AdsLog.d(TAG, "AppOpenAdLoader: destroyAds called")
     }
 
     override fun isStartAdAvailable(): Boolean {
@@ -89,7 +92,7 @@ class AppOpenAdLoader(
     }
 
     private fun handleAppResume() {
-        Log.e(TAG, "AppOpenAdLoader: handleAppResume called")
+        AdsLog.d(TAG, "AppOpenAdLoader: handleAppResume called")
         if (isPremium || !adController.shouldShowOpenAd || !adController.shouldShowResumeAd) {
             return
         }
@@ -125,11 +128,11 @@ class AppOpenAdLoader(
     }
 
     private fun handleAppPause() {
-        Log.e(TAG, "AppOpenAdLoader: handleAppPause at ${System.currentTimeMillis()}")
+        AdsLog.d(TAG, "AppOpenAdLoader: handleAppPause at ${System.currentTimeMillis()}")
         startTime = System.currentTimeMillis()
     }
 
     private fun logResumeTiming(startTime: Long, currentTime: Long, diff: Long, remoteTimer: Long) {
-        Log.e(TAG, "AppOpenAdLoader: Resume timing startTime=$startTime, currentTime=$currentTime, diff=$diff, remoteTimer=$remoteTimer")
+        AdsLog.d(TAG, "AppOpenAdLoader: Resume timing startTime=$startTime, currentTime=$currentTime, diff=$diff, remoteTimer=$remoteTimer")
     }
 }

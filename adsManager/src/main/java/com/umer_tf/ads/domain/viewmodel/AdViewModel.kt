@@ -1,11 +1,11 @@
 package com.umer_tf.ads.domain.viewmodel
 
 import android.app.Activity
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import com.google.android.gms.ads.nativead.NativeAd
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdBuilder
 import com.umer_tf.ads.domain.core.AdMobManager
+import com.umer_tf.ads.domain.utils.AdsLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,15 +31,15 @@ class AdViewModel : ViewModel() {
      */
     fun loadNativeAd(adMobManager: AdMobManager, adUnitId: String) {
         if (_nativeAdState.value is NativeAdUiState.Loading) {
-            Log.e(TAG, "AdViewModel: loadNativeAd already in progress for $adUnitId")
+            AdsLog.d(TAG, "AdViewModel: loadNativeAd already in progress for $adUnitId")
             return
         }
         if (_nativeAdState.value is NativeAdUiState.Success && cachedNativeAd != null) {
-            Log.e(TAG, "AdViewModel: loadNativeAd cached ad retained across config change for $adUnitId")
+            AdsLog.d(TAG, "AdViewModel: loadNativeAd cached ad retained across config change for $adUnitId")
             return
         }
 
-        Log.e(TAG, "AdViewModel: loadNativeAd starting load for $adUnitId")
+        AdsLog.d(TAG, "AdViewModel: loadNativeAd starting load for $adUnitId")
         _nativeAdState.value = NativeAdUiState.Loading
 
         adMobManager.nativeAdLoader.loadAd(
@@ -47,10 +47,10 @@ class AdViewModel : ViewModel() {
             onAdLoadedNative = { success, nativeAd ->
                 if (success && nativeAd != null) {
                     cachedNativeAd = nativeAd
-                    Log.e(TAG, "AdViewModel: loadNativeAd success for $adUnitId")
+                    AdsLog.d(TAG, "AdViewModel: loadNativeAd success for $adUnitId")
                     _nativeAdState.value = NativeAdUiState.Success(nativeAd, adUnitId)
                 } else {
-                    Log.e(TAG, "AdViewModel: loadNativeAd failed for $adUnitId")
+                    AdsLog.e(TAG, "AdViewModel: loadNativeAd failed for $adUnitId")
                     _nativeAdState.value = NativeAdUiState.Error("Failed to load native ad")
                 }
             }
@@ -63,10 +63,10 @@ class AdViewModel : ViewModel() {
     fun showNativeAd(adMobManager: AdMobManager, builder: NativeAdBuilder, adUnitId: String) {
         val currentState = _nativeAdState.value
         if (currentState is NativeAdUiState.Success) {
-            Log.e(TAG, "AdViewModel: showNativeAd displaying cached ad into container")
+            AdsLog.d(TAG, "AdViewModel: showNativeAd displaying cached ad into container")
             adMobManager.nativeAdLoader.showLoadedAd(builder, adUnitId)
         } else {
-            Log.e(TAG, "AdViewModel: showNativeAd called but native ad is not loaded yet")
+            AdsLog.d(TAG, "AdViewModel: showNativeAd called but native ad is not loaded yet")
         }
     }
 
@@ -75,17 +75,17 @@ class AdViewModel : ViewModel() {
      */
     fun loadInterstitialAd(adMobManager: AdMobManager, adUnitId: String) {
         if (_interstitialAdState.value is InterstitialAdUiState.Loading) return
-        Log.e(TAG, "AdViewModel: loadInterstitialAd starting for $adUnitId")
+        AdsLog.d(TAG, "AdViewModel: loadInterstitialAd starting for $adUnitId")
         _interstitialAdState.value = InterstitialAdUiState.Loading
 
         adMobManager.interstitialAdLoader.loadAd(
             adUnitId = adUnitId,
             onAdLoaded = { success ->
                 if (success) {
-                    Log.e(TAG, "AdViewModel: loadInterstitialAd loaded")
+                    AdsLog.d(TAG, "AdViewModel: loadInterstitialAd loaded")
                     _interstitialAdState.value = InterstitialAdUiState.Loaded
                 } else {
-                    Log.e(TAG, "AdViewModel: loadInterstitialAd error")
+                    AdsLog.d(TAG, "AdViewModel: loadInterstitialAd error")
                     _interstitialAdState.value = InterstitialAdUiState.Error("Failed to load interstitial ad")
                 }
             }
@@ -96,18 +96,18 @@ class AdViewModel : ViewModel() {
      * Shows an Interstitial Ad.
      */
     fun showInterstitialAd(activity: Activity, adMobManager: AdMobManager, adUnitId: String) {
-        Log.e(TAG, "AdViewModel: showInterstitialAd requested")
+        AdsLog.d(TAG, "AdViewModel: showInterstitialAd requested")
         _interstitialAdState.value = InterstitialAdUiState.Shown
 
         adMobManager.interstitialAdLoader.showAd(
             activity = activity,
             adUnitId = adUnitId,
             onAdDismissed = {
-                Log.e(TAG, "AdViewModel: showInterstitialAd dismissed")
+                AdsLog.d(TAG, "AdViewModel: showInterstitialAd dismissed")
                 _interstitialAdState.value = InterstitialAdUiState.Dismissed
             },
             onAdFailedToShow = { error ->
-                Log.e(TAG, "AdViewModel: showInterstitialAd failed to show error=$error")
+                AdsLog.e(TAG, "AdViewModel: showInterstitialAd failed to show error=$error")
                 _interstitialAdState.value = InterstitialAdUiState.Error(error)
             }
         )
@@ -118,7 +118,7 @@ class AdViewModel : ViewModel() {
      */
     fun loadRewardedAd(activity: Activity, adMobManager: AdMobManager, adUnitId: String) {
         if (_rewardedAdState.value is RewardedAdUiState.Loading) return
-        Log.e(TAG, "AdViewModel: loadRewardedAd starting for $adUnitId")
+        AdsLog.d(TAG, "AdViewModel: loadRewardedAd starting for $adUnitId")
         _rewardedAdState.value = RewardedAdUiState.Loading
 
         adMobManager.rewardedAdLoader.loadAd(
@@ -126,10 +126,10 @@ class AdViewModel : ViewModel() {
             adUnitId = adUnitId,
             onAdLoaded = { success ->
                 if (success) {
-                    Log.e(TAG, "AdViewModel: loadRewardedAd loaded")
+                    AdsLog.d(TAG, "AdViewModel: loadRewardedAd loaded")
                     _rewardedAdState.value = RewardedAdUiState.Loaded
                 } else {
-                    Log.e(TAG, "AdViewModel: loadRewardedAd error")
+                    AdsLog.d(TAG, "AdViewModel: loadRewardedAd error")
                     _rewardedAdState.value = RewardedAdUiState.Error("Failed to load rewarded ad")
                 }
             }
@@ -140,15 +140,15 @@ class AdViewModel : ViewModel() {
      * Shows a Rewarded Ad.
      */
     fun showRewardedAd(activity: Activity, adMobManager: AdMobManager) {
-        Log.e(TAG, "AdViewModel: showRewardedAd requested")
+        AdsLog.d(TAG, "AdViewModel: showRewardedAd requested")
         adMobManager.rewardedAdLoader.showAd(
             activity = activity,
             onRewardEarned = { earned ->
-                Log.e(TAG, "AdViewModel: showRewardedAd rewardEarned=$earned")
+                AdsLog.d(TAG, "AdViewModel: showRewardedAd rewardEarned=$earned")
                 _rewardedAdState.value = RewardedAdUiState.Shown(earned)
             },
             onAdDismissed = {
-                Log.e(TAG, "AdViewModel: showRewardedAd dismissed")
+                AdsLog.d(TAG, "AdViewModel: showRewardedAd dismissed")
                 _rewardedAdState.value = RewardedAdUiState.Dismissed
             }
         )
@@ -156,7 +156,7 @@ class AdViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        Log.e(TAG, "AdViewModel: onCleared - destroying cached ad resources")
+        AdsLog.d(TAG, "AdViewModel: onCleared - destroying cached ad resources")
         cachedNativeAd?.destroy()
         cachedNativeAd = null
     }

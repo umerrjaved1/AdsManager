@@ -39,14 +39,14 @@
             android:id="@+id/tvAd"
             android:layout_width="wrap_content"
             android:layout_height="@dimen/_15sdp"
-            android:background="@drawable/bg_square_yellow"
+            android:background="@drawable/adlibrary_ad_badge_border"
             android:gravity="center"
             android:paddingHorizontal="4dp"
             android:paddingVertical="2dp"
-            android:text="Ad"
+            android:text="@string/ad"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            android:textColor="@color/ad_text_primary"
+            android:textColor="@color/ad_badge_text"
             android:textSize="@dimen/_9ssp" />
 
         <View

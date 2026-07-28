@@ -7,15 +7,21 @@
         <item name="android:background">#FFFFFF</item>
     </style>
 
+    <!--
+        Ad attribution ("Ad" tag). AdMob policy requires this label to be visible on every
+        native ad, so it must never be styled to visibility="gone" or a transparent colour.
+    -->
     <style name="AdAttribution">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_gravity">left</item>
-        <item name="android:textColor">#FFFFFF</item>
-        <item name="android:textSize">15dp</item>
-        <item name="android:text">"Ad"</item>
-        <item name="android:padding">@dimen/_1sdp</item>
-        <item name="android:background">@drawable/bg_square_yellow</item>
+        <item name="android:layout_gravity">start</item>
+        <item name="android:textColor">@color/ad_badge_text</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:text">@string/ad</item>
+        <item name="android:paddingHorizontal">@dimen/_5sdp</item>
+        <item name="android:paddingVertical">@dimen/_1sdp</item>
+        <item name="android:background">@drawable/adlibrary_ad_badge_border</item>
     </style>
 
     <style name="AdmobTheme"/>

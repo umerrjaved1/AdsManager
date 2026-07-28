@@ -9,6 +9,7 @@ import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.FormError
 import com.google.android.ump.UserMessagingPlatform
+import com.umer_tf.ads.domain.utils.AdsLog
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.util.*
@@ -45,7 +46,7 @@ class AdsConsentManager(val context: Context) {
                 reset()
                 val android_id = Settings.Secure.getString(activity?.contentResolver, Settings.Secure.ANDROID_ID)
                 val deviceId = md5(android_id).uppercase(Locale.getDefault())
-                Log.i("Skype=", deviceId)
+                AdsLog.d(TAG, "Consent test device hashed id: $deviceId")
                 // For testing purposes, you can force a DebugGeography of EEA or NOT_EEA.
                 val debugSettings = ConsentDebugSettings.Builder(activity)
                     .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
@@ -56,10 +57,73 @@ class AdsConsentManager(val context: Context) {
             build()
         }
 
+        AdsConsentGate.isEnforced = true
         consentInformation.requestConsentInfoUpdate(activity, params, {
-            Log.d(TAG, "Consent info updated successfully.")
+            AdsLog.d(TAG, "Consent info updated successfully.")
+            AdsConsentGate.update(consentInformation.canRequestAds())
         }, { error ->
-            Log.e(TAG, "Error updating consent info: ${error.errorCode} - ${error.message}")
+            AdsLog.e(TAG, "Error updating consent info: ${error.errorCode} - ${error.message}")
+            // A failed update leaves the previous UMP decision in place; publish whatever it says
+            // rather than blocking ads forever on a transient network error.
+            AdsConsentGate.update(consentInformation.canRequestAds())
+        })
+    }
+
+    /**
+     * Runs the whole consent flow: updates consent info, shows the form when required, and publishes
+     * the result to [AdsConsentGate] so ad requests are gated correctly.
+     *
+     * This is what [com.umer_tf.ads.domain.core.AdMobManager.gatherConsent] calls.
+     *
+     * @param onComplete Invoked with `canRequestAds` once the flow settles, successfully or not.
+     */
+    fun gatherConsent(activity: Activity, isTest: Boolean = false, onComplete: (Boolean) -> Unit) {
+        AdsConsentGate.isEnforced = true
+
+        val params = ConsentRequestParameters.Builder().apply {
+            setTagForUnderAgeOfConsent(false)
+            if (isTest) {
+                consentInformation.reset()
+                val androidId = Settings.Secure.getString(
+                    activity.contentResolver,
+                    Settings.Secure.ANDROID_ID
+                )
+                val deviceId = md5(androidId).uppercase(Locale.getDefault())
+                AdsLog.d(TAG, "Consent test device hashed id: $deviceId")
+                setConsentDebugSettings(
+                    ConsentDebugSettings.Builder(activity)
+                        .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
+                        .setForceTesting(true)
+                        .addTestDeviceHashedId(deviceId)
+                        .build()
+                )
+            }
+        }.build()
+
+        val settle = {
+            val allowed = consentInformation.canRequestAds()
+            AdsConsentGate.update(allowed)
+            onComplete(allowed)
+        }
+
+        consentInformation.requestConsentInfoUpdate(activity, params, {
+            if (activity.isFinishing || activity.isDestroyed) {
+                // The form needs a live window; settle on the status we already have.
+                AdsLog.e(TAG, "gatherConsent: activity gone before the form could be shown")
+                settle()
+            } else {
+                UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
+                    if (formError != null) {
+                        AdsLog.e(TAG, "Consent form failed: ${formError.errorCode} - ${formError.message}")
+                    } else {
+                        AdsLog.d(TAG, "Consent gathering complete.")
+                    }
+                    settle()
+                }
+            }
+        }, { error ->
+            AdsLog.e(TAG, "Consent info update failed: ${error.errorCode} - ${error.message}")
+            settle()
         })
     }
 
@@ -75,12 +139,13 @@ class AdsConsentManager(val context: Context) {
             activity,
             { formError ->
                 if (formError != null) {
-                    Log.e(TAG, "Error loading consent form: ${formError.errorCode} - ${formError.message}")
+                    AdsLog.d(TAG, "Error loading consent form: ${formError.errorCode} - ${formError.message}")
                     onConsentFormLoaded(false)
                 } else {
-                    Log.d(TAG, "Consent form loaded and shown successfully.")
+                    AdsLog.d(TAG, "Consent form loaded and shown successfully.")
                     onConsentFormLoaded(true)
                 }
+                AdsConsentGate.update(consentInformation.canRequestAds())
             }
         )
     }
@@ -124,7 +189,7 @@ class AdsConsentManager(val context: Context) {
                 activity
             ) { loadAndShowError ->
                 // Consent gathering failed.
-                Log.e(
+                AdsLog.d(
                     TAG, String.format(
                         "%s: %s", loadAndShowError?.errorCode, loadAndShowError?.message
                     )
@@ -158,6 +223,7 @@ class AdsConsentManager(val context: Context) {
      */
     fun reset() {
         consentInformation.reset()
+        AdsConsentGate.reset()
     }
 
     /**

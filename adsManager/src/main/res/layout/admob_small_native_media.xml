@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_border_blue"
-    android:layoutDirection="ltr">
+>
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/clAd"
@@ -108,7 +108,7 @@
                 android:maxLines="1"
                 android:paddingHorizontal="@dimen/_5sdp"
                 android:paddingVertical="@dimen/_1sdp"
-                android:textColor="@color/ad_cta_text"
+                android:textColor="@color/ad_badge_text"
                 android:textSize="@dimen/_8sdp"
                 android:visibility="visible"
                 app:layout_constraintStart_toStartOf="parent"

@@ -16,6 +16,15 @@
     <color name="ad_cta_background">#007BFF</color>
     <color name="ad_cta_ripple">#0056B3</color>
 
+    <!-- Ad attribution ("Ad" tag) - required by AdMob policy to always be visible -->
+    <color name="ad_badge_text">#616161</color>
+    <color name="ad_badge_stroke">#808080</color>
+
+    <!-- Shimmer placeholder block + sheen (night variants in values-night/colors.xml) -->
+    <color name="ad_shimmer_block">#D8D8D8</color>
+    <color name="ad_shimmer_base">#E0E0E0</color>
+    <color name="ad_shimmer_highlight">#F5F5F5</color>
+
     <!-- Colors for imported layouts -->
     <color name="Primary">#03A9F4</color>
     <color name="SurfaceContainer">#ffffff</color>

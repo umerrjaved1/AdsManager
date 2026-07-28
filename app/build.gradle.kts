@@ -22,7 +22,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // On so the library's consumer rules are actually exercised. The sample app is how R8
+            // coverage gets verified; with minification off, nothing ever proved the AAR survives
+            // shrinking in a real host app.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

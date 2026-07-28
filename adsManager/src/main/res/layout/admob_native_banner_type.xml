@@ -24,7 +24,7 @@
                 style="@style/AdAttribution"
                 android:layout_gravity="start"
                 android:layout_marginStart="@dimen/_10sdp"
-                android:visibility="gone"
+                android:visibility="visible"
                 app:layout_constraintBottom_toBottomOf="@+id/ad_headline"
                 app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
                 app:layout_constraintTop_toTopOf="@+id/ad_headline" />

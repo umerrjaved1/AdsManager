@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -22,6 +21,7 @@ import com.umer_tf.ads.R
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.core.AdMobManager
+import com.umer_tf.ads.domain.utils.AdsLog
 import java.util.UUID
 
 /**
@@ -34,7 +34,12 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
     private val TAG = "AdsManager_FullScreen"
     private val handler = Handler(Looper.getMainLooper())
     private var isDismissed = false
+    private var adResolved = false
     private var closeButtonRunnable: Runnable? = null
+    private var loadTimeoutRunnable: Runnable? = null
+
+    /** Identifies this instance's entry in [pendingDismissCallbacks]. */
+    private var launchToken: String? = null
 
     private lateinit var adContainer: FrameLayout
     private lateinit var shimmerContainer: ShimmerFrameLayout
@@ -43,13 +48,15 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Security check: Ensure activity is launched only via official companion launcher
-        val launchToken = intent.getStringExtra(EXTRA_LAUNCH_TOKEN)
-        if (launchToken == null || launchToken != activeLaunchToken) {
-            Log.e(TAG, "FullScreenNativeAdActivity blocked: Attempted to start activity directly or outside companion launcher!")
+        // Security check: only the companion launcher hands out valid tokens, so a direct external
+        // intent has nothing to present here.
+        val token = intent.getStringExtra(EXTRA_LAUNCH_TOKEN)
+        if (token == null || !pendingLaunchTokens.remove(token)) {
+            AdsLog.e(TAG, "FullScreenNativeAdActivity blocked: Attempted to start activity directly or outside companion launcher!")
             finish()
             return
         }
+        launchToken = token
 
         enableEdgeToEdge()
         setContentView(R.layout.activity_full_screen_native_ad)
@@ -68,16 +75,18 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
         val closeDelayMs = intent.getLongExtra(EXTRA_CLOSE_DELAY_MS, 2000L)
         val layoutResId = intent.getIntExtra(EXTRA_LAYOUT_RES_ID, R.layout.admob_native_fullscreen)
 
-        // Dynamically inflate matching full-screen/large shimmer layout for the requested native layout
         val shimmerHost = findViewById<FrameLayout>(R.id.shimmerHost)
-        val shimmerLayoutResId = getMatchingShimmerLayoutResId(layoutResId)
-        val inflatedShimmerView = layoutInflater.inflate(shimmerLayoutResId, shimmerHost, false)
-        shimmerHost.addView(inflatedShimmerView)
-
-        shimmerContainer = (inflatedShimmerView as? ShimmerFrameLayout)
-            ?: (shimmerHost.getChildAt(0) as ShimmerFrameLayout)
-
         val theme = reconstructThemeFromIntent(intent)
+
+        // Shimmer shaped like the requested native layout, resolved from the shared registry so it
+        // stays in sync with whatever layouts the app registers.
+        val attachedShimmer = NativeAdShimmer.attachTo(shimmerHost, layoutResId, theme)
+        if (attachedShimmer == null) {
+            AdsLog.e(TAG, "Unable to inflate a shimmer for layout $layoutResId, finishing")
+            finish()
+            return
+        }
+        shimmerContainer = attachedShimmer
 
         // Apply NativeAdTheme background & title text color to activity root, containers, and close button
         kotlin.runCatching {
@@ -92,10 +101,6 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
             btnClose.setColorFilter(titleColorInt)
         }
 
-        theme.applyShimmerTo(shimmerContainer)
-
-        shimmerContainer.startShimmer()
-        shimmerContainer.visibility = View.VISIBLE
         adContainer.visibility = View.GONE
         btnClose.visibility = View.GONE
 
@@ -108,14 +113,30 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
             .setTheme(theme)
             .build()
 
+        // Hard deadline. System back is disabled and btnClose only appears once an ad has loaded, so
+        // an SDK callback that never arrives would otherwise trap the user on a blank screen with no
+        // way out at all.
+        val loadTimeoutMs = intent.getLongExtra(EXTRA_LOAD_TIMEOUT_MS, DEFAULT_LOAD_TIMEOUT_MS)
+        loadTimeoutRunnable = Runnable {
+            if (!adResolved && !isFinishing && !isDestroyed) {
+                AdsLog.e(TAG, "Full screen ad did not resolve within ${loadTimeoutMs}ms, closing")
+                shimmerContainer.stopAndHide()
+                dismissAd()
+            }
+        }
+        handler.postDelayed(loadTimeoutRunnable!!, loadTimeoutMs)
+
         // Load & Show native ad using NativeAdLoader
         val adMobManager = AdMobManager.getInstance(application)
         adMobManager.nativeAdLoader.loadAndShow(
             adUnitId = adUnitId,
             builder = builder,
             onAdLoaded = { success ->
+                adResolved = true
+                loadTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                loadTimeoutRunnable = null
                 if (success) {
-                    Log.e(TAG, "Full screen ad loaded and shown successfully. Starting close button delay timer (${closeDelayMs}ms)")
+                    AdsLog.d(TAG, "Full screen ad loaded and shown successfully. Starting close button delay timer (${closeDelayMs}ms)")
                     // Start close button delay timer ONLY AFTER ad is loaded and shown
                     closeButtonRunnable = Runnable {
                         if (!isFinishing && !isDestroyed) {
@@ -124,9 +145,8 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
                     }
                     handler.postDelayed(closeButtonRunnable!!, closeDelayMs)
                 } else {
-                    Log.e(TAG, "Full screen ad failed to load, finishing activity immediately")
-                    shimmerContainer.stopShimmer()
-                    shimmerContainer.visibility = View.GONE
+                    AdsLog.e(TAG, "Full screen ad failed to load, finishing activity immediately")
+                    shimmerContainer.stopAndHide()
                     dismissAd()
                 }
             }
@@ -144,46 +164,39 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
         })
     }
 
-    private fun getMatchingShimmerLayoutResId(@LayoutRes layoutResId: Int): Int {
-        return when (layoutResId) {
-            R.layout.admob_native_fullscreen -> R.layout.adlibrary_shimmer_native_fullscreen
-            R.layout.admob_large_native_media -> R.layout.adlibrary_shimmer_native_large_v2
-            R.layout.layout_native_ad_large_5a -> R.layout.adlibrary_shimmer_native_large_5a
-            R.layout.layout_native_ad_large_6a -> R.layout.adlibrary_shimmer_native_large_6a
-            R.layout.layout_native_ad_large_6b -> R.layout.adlibrary_shimmer_native_large_6b
-            R.layout.layout_native_ad_large_v2 -> R.layout.adlibrary_shimmer_native_large_v2
-            R.layout.layout_native_ad_large_v3 -> R.layout.adlibrary_shimmer_native_large_v2
-            R.layout.layout_native_ad_small_1a -> R.layout.adlibrary_shimmer_native_small_1a
-            R.layout.layout_native_ad_small_1b -> R.layout.adlibrary_shimmer_native_small_1b
-            R.layout.layout_native_ad_small_1c -> R.layout.adlibrary_shimmer_native_small_1c
-            R.layout.layout_native_ad_small_3a -> R.layout.adlibrary_shimmer_native_small_3a
-            R.layout.layout_native_ad_small_3b -> R.layout.adlibrary_shimmer_native_small_3b
-            R.layout.layout_native_ad_small_4  -> R.layout.adlibrary_shimmer_native_small_4
-            R.layout.layout_native_ad_small_7a -> R.layout.adlibrary_shimmer_native_small_7a
-            R.layout.layout_native_ad_small_7b -> R.layout.adlibrary_shimmer_native_small_7b
-            R.layout.layout_native_ad_small_7c -> R.layout.adlibrary_shimmer_native_small_7c
-            else -> R.layout.adlibrary_shimmer_native_fullscreen
-        }
-    }
-
     private fun dismissAd() {
         if (!isDismissed) {
             isDismissed = true
-            closeButtonRunnable?.let { handler.removeCallbacks(it) }
-            onDismissCallback?.invoke()
-            onDismissCallback = null
+            cancelPendingCallbacks()
+            consumeDismissCallback()?.invoke()
             finish()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        closeButtonRunnable?.let { handler.removeCallbacks(it) }
+        cancelPendingCallbacks()
         if (!isDismissed) {
-            onDismissCallback?.invoke()
-            onDismissCallback = null
+            isDismissed = true
+            consumeDismissCallback()?.invoke()
+        }
+        // Belt and braces: never leave this instance's entry behind, even on an abnormal teardown.
+        launchToken?.let {
+            pendingDismissCallbacks.remove(it)
+            pendingLaunchTokens.remove(it)
         }
     }
+
+    private fun cancelPendingCallbacks() {
+        closeButtonRunnable?.let { handler.removeCallbacks(it) }
+        closeButtonRunnable = null
+        loadTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        loadTimeoutRunnable = null
+    }
+
+    /** Removes and returns this instance's callback, so it can only ever fire once. */
+    private fun consumeDismissCallback(): (() -> Unit)? =
+        launchToken?.let { pendingDismissCallbacks.remove(it) }
 
     private fun reconstructThemeFromIntent(intent: Intent): NativeAdTheme {
         val autoDefault = NativeAdTheme.auto(this)
@@ -203,10 +216,24 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
     }
 
     companion object {
-        private var activeLaunchToken: String? = null
-        private var onDismissCallback: (() -> Unit)? = null
+        /**
+         * Single-use launch tokens, and the dismissal callback belonging to each.
+         *
+         * These were previously two plain statics, so a second [start] call overwrote the first
+         * launch's token - invalidating an Activity that had not started yet - and replaced its
+         * callback, which then never fired. Keying by token makes concurrent launches independent, and
+         * each entry is removed as soon as it is consumed so no launching Activity is retained.
+         */
+        private val pendingLaunchTokens: MutableSet<String> =
+            java.util.Collections.synchronizedSet(mutableSetOf())
+        private val pendingDismissCallbacks =
+            java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
+
+        /** How long to wait for the ad to resolve before closing the Activity. */
+        const val DEFAULT_LOAD_TIMEOUT_MS: Long = 15_000L
 
         private const val EXTRA_LAUNCH_TOKEN = "extra_launch_token"
+        private const val EXTRA_LOAD_TIMEOUT_MS = "extra_load_timeout_ms"
         private const val EXTRA_AD_UNIT_ID = "extra_ad_unit_id"
         private const val EXTRA_CLOSE_DELAY_MS = "extra_close_delay_ms"
         private const val EXTRA_LAYOUT_RES_ID = "extra_layout_res_id"
@@ -225,23 +252,33 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
         /**
          * Official launcher function for FullScreenNativeAdActivity.
          * Package protected and secure against external direct intents.
+         *
+         * @param loadTimeoutMs Deadline for the ad to resolve. The Activity closes itself and invokes
+         *   [onAdDismissed] if the SDK never calls back, so the user is never trapped.
          */
         @JvmStatic
+        @JvmOverloads
         fun start(
             context: Context,
             @ValidateAdUnitId adUnitId: String,
             theme: NativeAdTheme = NativeAdTheme.auto(context),
             closeButtonDelayMs: Long = 2000L,
             @LayoutRes layoutResId: Int = R.layout.admob_native_fullscreen,
+            loadTimeoutMs: Long = DEFAULT_LOAD_TIMEOUT_MS,
             onAdDismissed: (() -> Unit)? = null
         ) {
-            AdUnitIdValidator.validateAdUnitId(adUnitId)
-            onDismissCallback = onAdDismissed
+            if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
+                // Nothing was started, so the caller still needs to be released.
+                onAdDismissed?.invoke()
+                return
+            }
 
             val launchToken = UUID.randomUUID().toString()
-            activeLaunchToken = launchToken
+            pendingLaunchTokens.add(launchToken)
+            onAdDismissed?.let { pendingDismissCallbacks[launchToken] = it }
 
             val intent = Intent(context, FullScreenNativeAdActivity::class.java).apply {
+                putExtra(EXTRA_LOAD_TIMEOUT_MS, loadTimeoutMs)
                 putExtra(EXTRA_LAUNCH_TOKEN, launchToken)
                 putExtra(EXTRA_AD_UNIT_ID, adUnitId)
                 putExtra(EXTRA_CLOSE_DELAY_MS, closeButtonDelayMs)
@@ -262,7 +299,14 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             }
-            context.startActivity(intent)
+            runCatching { context.startActivity(intent) }.onFailure { error ->
+                // Nothing will consume the token, so clean up here instead of leaking the callback.
+                AdsLog.e(TAG_STATIC, "start: unable to launch full screen ad -> ${error.message}")
+                pendingLaunchTokens.remove(launchToken)
+                pendingDismissCallbacks.remove(launchToken)?.invoke()
+            }
         }
+
+        private const val TAG_STATIC = "AdsManager_FullScreen"
     }
 }

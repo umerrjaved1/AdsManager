@@ -3,17 +3,17 @@ package com.umer_tf.ads.domain.ads.app_open
 import android.app.Activity
 import android.app.Application
 import android.content.Context
-import android.util.Log
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.appopen.AppOpenAd
-import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
+import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
+import com.umer_tf.ads.domain.analytics.AdType
+import com.umer_tf.ads.domain.analytics.AdEvents
 import com.umer_tf.ads.domain.utils.AdController
-import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_DISMISSED
-import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_SHOWN
-import com.umer_tf.ads.domain.utils.AnalyticsManager
+import com.umer_tf.ads.domain.utils.AdsLog
+import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,13 +28,23 @@ internal class StartAdManager(
 
     companion object {
         private const val TAG = "AdsManager_AppOpen_Start"
-        private const val AD_EXPIRATION_TIME_MS = 4 * 60 * 60 * 1000L // 4 hours
     }
 
     fun loadAd(context: Context, onAdLoaded: ((Boolean) -> Unit)? = null) {
-        Log.e(TAG, "StartAdManager: loadAd requested")
+        AdsLog.d(TAG, "StartAdManager: loadAd requested")
         if (isAdAvailable() || isLoadingAd) {
-            Log.e(TAG, "StartAdManager: loadAd skipped (already available or loading)")
+            AdsLog.e(TAG, "StartAdManager: loadAd skipped (already available or loading)")
+            onAdLoaded?.invoke(false)
+            return
+        }
+        // App open ads used to bypass this gate entirely, so they still requested for premium users,
+        // offline, and before consent was gathered.
+        if (!shouldShowAd(context)) {
+            AdsLog.e(TAG, "StartAdManager: loadAd skipped (shouldShowAd returns false)")
+            onAdLoaded?.invoke(false)
+            return
+        }
+        if (!AdUnitIdValidator.validateAdUnitId(adController.appOpenAdStartId)) {
             onAdLoaded?.invoke(false)
             return
         }
@@ -55,9 +65,9 @@ internal class StartAdManager(
         onShowAdCompleteListener: ((Boolean) -> Unit)? = null,
         onStateChange: (Boolean) -> Unit
     ) {
-        Log.e(TAG, "StartAdManager: showAd requested")
+        AdsLog.d(TAG, "StartAdManager: showAd requested")
         if (activity == null || !isAdAvailable()) {
-            Log.e(TAG, "StartAdManager: showAd skipped (activity$activity  isAdAvailable() ${isAdAvailable()})")
+            AdsLog.e(TAG, "StartAdManager: showAd skipped (activity$activity  isAdAvailable() ${isAdAvailable()})")
             onShowAdCompleteListener?.invoke(false)
             return
         }
@@ -70,14 +80,16 @@ internal class StartAdManager(
     fun isAdAvailable(): Boolean = appOpenAd != null && !isAdExpired()
 
     fun destroy() {
-        Log.e(TAG, "StartAdManager: destroy called")
+        AdsLog.d(TAG, "StartAdManager: destroy called")
         appOpenAd = null
         isLoadingAd = false
         loadTime = 0
     }
 
+    // TTL lives on AdController so it can be tuned instead of being a private constant.
+    // Default is unchanged at 4 hours.
     private fun isAdExpired(): Boolean =
-        System.currentTimeMillis() - loadTime > AD_EXPIRATION_TIME_MS
+        System.currentTimeMillis() - loadTime > adController.appOpenAdTtlMs
 
     private fun createLoadCallback(onAdLoaded: ((Boolean) -> Unit)?) =
         object : AppOpenAd.AppOpenAdLoadCallback() {
@@ -85,13 +97,15 @@ internal class StartAdManager(
                 appOpenAd = ad
                 isLoadingAd = false
                 loadTime = System.currentTimeMillis()
-                Log.e(TAG, "StartAdManager: onAdLoaded successfully")
+                AdsLog.d(TAG, "StartAdManager: onAdLoaded successfully")
+                AdEvents.loaded(application, adController.appOpenAdStartId, AdType.APP_OPEN_START)
                 onAdLoaded?.invoke(true)
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 isLoadingAd = false
-                Log.e(TAG, "StartAdManager: onAdFailedToLoad error=${loadAdError.message}")
+                AdsLog.e(TAG, "StartAdManager: onAdFailedToLoad error=${loadAdError.message}")
+                AdEvents.failedToLoad(application, adController.appOpenAdStartId, AdType.APP_OPEN_START, loadAdError)
                 onAdLoaded?.invoke(false)
             }
         }
@@ -104,36 +118,37 @@ internal class StartAdManager(
             override fun onAdDismissedFullScreenContent() {
                 appOpenAd = null
                 onStateChange(false)
-                Log.e(TAG, "StartAdManager: onAdDismissedFullScreenContent")
-                AnalyticsManager.getInstance(application)
-                    .sendAnalytics(AD_DISMISSED, "OpenAd_Start")
+                AdsLog.d(TAG, "StartAdManager: onAdDismissedFullScreenContent")
+                AdEvents.dismissed(application, adController.appOpenAdStartId, AdType.APP_OPEN_START)
                 onShowAdCompleteListener?.invoke(true)
             }
 
             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
                 appOpenAd = null
                 onStateChange(false)
-                Log.e(TAG, "StartAdManager: onAdFailedToShowFullScreenContent error=${adError.message}")
+                AdsLog.e(TAG, "StartAdManager: onAdFailedToShowFullScreenContent error=${adError.message}")
+                AdEvents.failedToLoad(application, adController.appOpenAdStartId, AdType.APP_OPEN_START, adError)
                 onShowAdCompleteListener?.invoke(false)
             }
 
             override fun onAdShowedFullScreenContent() {
-                AnalyticsManager.getInstance(application).sendAnalytics(AD_SHOWN, "OpenAd_Start")
-                Log.e(TAG, "StartAdManager: onAdShowedFullScreenContent")
+                AdEvents.showed(application, adController.appOpenAdStartId, AdType.APP_OPEN_START)
+                AdsLog.d(TAG, "StartAdManager: onAdShowedFullScreenContent")
+            }
+
+            override fun onAdClicked() {
+                super.onAdClicked()
+                AdsLog.d(TAG, "StartAdManager: onAdClicked")
+                AdEvents.clicked(application, adController.appOpenAdStartId, AdType.APP_OPEN_START)
             }
         }
 
         appOpenAd?.setOnPaidEventListener { adValue ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    AdsAnalytics.logAppsFlyerRevenue(
-                        appOpenAd?.adUnitId ?: "",
-                        "OpenAd_Start",
-                        adValue,
-                        application
-                    )
+                    AdEvents.revenue(application, appOpenAd?.adUnitId ?: "", AdType.APP_OPEN_START, adValue)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to log start ad revenue", e)
+                    AdsLog.e(TAG, "Failed to log start ad revenue", e)
                 }
             }
         }

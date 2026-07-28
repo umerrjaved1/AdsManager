@@ -7,9 +7,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
-    <application
-        android:allowBackup="true"
-        android:supportsRtl="true">
+    <!--
+        No android:allowBackup here: a library manifest merges its application attributes into every
+        consuming app, so declaring it silently overrode the host app's own backup policy.
+    -->
+    <application android:supportsRtl="true">
 
         <activity android:name="com.google.android.gms.ads.AdActivity"
             android:theme="@style/AdmobTheme"
