@@ -2,8 +2,12 @@ name: Publish to GitHub Packages
 
 on:
   push:
+    branches:
+      - main
+      - feature/native-ads
     tags:
       - 'v*'   # Runs only when you push a version tag like v1.0.1
+  workflow_dispatch: # Allows manual triggering from GitHub UI
 
 jobs:
   publish:
