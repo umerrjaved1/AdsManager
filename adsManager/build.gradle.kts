@@ -99,8 +99,15 @@ afterEvaluate {
                     if (localPropsFile.exists()) {
                         localProps.load(localPropsFile.inputStream())
                     }
-                    username = localProps.getProperty("gpr.user") ?: providers.gradleProperty("gpr.user").orNull
-                    password = localProps.getProperty("gpr.key") ?: providers.gradleProperty("gpr.key").orNull
+                    // Local first, then Gradle properties, then the environment. The env fallback is
+                    // what CI uses: local.properties is gitignored and gpr.* are not set on a runner,
+                    // so .github/workflows/publish.yaml would otherwise authenticate as null and 401.
+                    username = localProps.getProperty("gpr.user")
+                        ?: providers.gradleProperty("gpr.user").orNull
+                        ?: providers.environmentVariable("GITHUB_USERNAME").orNull
+                    password = localProps.getProperty("gpr.key")
+                        ?: providers.gradleProperty("gpr.key").orNull
+                        ?: providers.environmentVariable("GITHUB_TOKEN").orNull
                 }
             }
         }
