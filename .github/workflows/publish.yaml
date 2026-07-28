@@ -37,7 +37,9 @@ jobs:
         env:
           GITHUB_USERNAME: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew clean publish
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean publish
 
       - name: Upload test and lint reports
         if: always()
