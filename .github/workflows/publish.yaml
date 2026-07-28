@@ -32,7 +32,9 @@ jobs:
 
       # Runs before publishing so a broken tag fails here rather than shipping an artifact.
       - name: Unit tests
-        run: ./gradlew :adsManager:testReleaseUnitTest
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :adsManager:testReleaseUnitTest
 
       - name: Publish library to GitHub Packages
         env:
