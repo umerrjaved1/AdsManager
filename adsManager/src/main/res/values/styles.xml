@@ -19,8 +19,10 @@
         <item name="android:textSize">10sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:text">@string/ad</item>
-        <item name="android:paddingHorizontal">@dimen/_5sdp</item>
-        <item name="android:paddingVertical">@dimen/_1sdp</item>
+        <item name="android:paddingStart">@dimen/_5sdp</item>
+        <item name="android:paddingEnd">@dimen/_5sdp</item>
+        <item name="android:paddingTop">@dimen/_1sdp</item>
+        <item name="android:paddingBottom">@dimen/_1sdp</item>
         <item name="android:background">@drawable/adlibrary_ad_badge_border</item>
     </style>
 
