@@ -30,9 +30,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
 
-      # Runs before publishing so a broken tag fails here rather than shipping an artifact.
-      
-  
+      # Runs before publishing so a broken tag fails here rather than shipping an artifact to every
+      # app in the factory. Publishing first and testing after is how a bad build reaches consumers.
+      - name: Run unit tests and verify the release build
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :adsManager:testReleaseUnitTest :adsManager:assembleRelease :app:assembleRelease
+
       - name: Publish library to GitHub Packages
         env:
           GITHUB_USERNAME: ${{ github.actor }}

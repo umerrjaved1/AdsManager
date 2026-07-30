@@ -18,6 +18,7 @@ import com.umer_tf.ads.domain.analytics.AdEvents
 import com.umer_tf.ads.domain.analytics.AdType
 import com.umer_tf.ads.domain.utils.AdController
 import com.umer_tf.ads.domain.utils.AdLoadingDialogConfig
+import com.umer_tf.ads.domain.utils.AdsEnvironment
 import com.umer_tf.ads.domain.utils.AdsLog
 import com.umer_tf.ads.domain.utils.LoadingDialogUtil
 import com.umer_tf.ads.domain.utils.TimeManager
@@ -74,6 +75,9 @@ open class AdMobManager(
      */
     @JvmOverloads
     fun initialize(onInitializationComplete: (() -> Unit)? = null) {
+        // Set synchronously, before the async SDK start, purely so warnIfNotInitialized can tell
+        // "you forgot to call this" apart from "it is still starting up".
+        initializeCalled = true
         TimeManager.getInstance().start()
         if (isInitialized) {
             onInitializationComplete?.invoke()
@@ -335,6 +339,35 @@ open class AdMobManager(
         @Volatile
         internal var premiumProvider: (() -> Boolean)? = null
 
+        /** True once [initialize] has been called. Not the same as the SDK having finished starting. */
+        @Volatile
+        internal var initializeCalled: Boolean = false
+
+        private val initWarningLogged = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /**
+         * Logs, once, when an ad is requested before [initialize].
+         *
+         * [getInstance] only builds the facade - nothing else in the library starts `MobileAds`, so
+         * skipping [initialize] leaves every request failing, and the SDK usually reports it as
+         * "Network error". That sends the integrator to check connectivity, the emulator, the ad unit
+         * ids and the manifest before they think to check this, which is a whole afternoon. Naming it
+         * costs one log line.
+         */
+        @JvmStatic
+        internal fun warnIfNotInitialized() {
+            if (initializeCalled) return
+            if (initWarningLogged.compareAndSet(false, true)) {
+                AdsLog.e(
+                    TAG,
+                    "Ad requested before AdMobManager.initialize(). MobileAds was never started, so " +
+                        "every request will fail - usually reported as \"Network error\", which is " +
+                        "misleading. Call initialize() (or gatherConsent(), which initializes for " +
+                        "you) from Application.onCreate before requesting ads."
+                )
+            }
+        }
+
         /**
          * Gets the singleton instance of AdMobManager.
          *
@@ -344,6 +377,9 @@ open class AdMobManager(
         @JvmStatic
         fun getInstance(application: Application): AdMobManager {
 
+            // Establishes whether the HOST app is debuggable. Must happen before anything reads
+            // AdsLog.isEnabled or AdUnitIdValidator.strictMode, both of which default to it.
+            AdsEnvironment.detectFrom(application)
             return instance ?: synchronized(this) {
                 instance ?: AdMobManager(application).also { instance = it }
             }

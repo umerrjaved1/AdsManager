@@ -27,6 +27,7 @@ import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.analytics.AdType
 import com.umer_tf.ads.domain.analytics.AdEvents
+import com.umer_tf.ads.domain.analytics.AdLoadFailure
 import com.umer_tf.ads.domain.utils.AdsLog
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
 import kotlinx.coroutines.CoroutineScope
@@ -622,5 +623,121 @@ class NativeAd(
         }
     }
 
+    /**
+     * Loads a native ad and hands it to [onResult] **without caching it in this loader**.
+     *
+     * [loadAd] keeps the result in a single internal slot, which is exactly what a keyed, multi-slot
+     * owner cannot use: two slots loading at once would overwrite each other, and both this loader and
+     * the owner would believe they were responsible for destroying the ad. This variant transfers
+     * ownership to the caller, which is how `AdViewModel` holds one ad per slot.
+     *
+     * @param onResult Invoked exactly once, on the main thread, with either the ad or the failure.
+     */
+    @MainThread
+    @JvmOverloads
+    fun loadDetached(
+        @ValidateAdUnitId adUnitId: String,
+        adType: AdType = AdType.NATIVE,
+        adChoicesPlacement: Int = NativeAdOptions.ADCHOICES_TOP_RIGHT,
+        onResult: (NativeAd?, AdLoadFailure?) -> Unit
+    ) {
+        AdsLog.d(TAG, "NativeAd: loadDetached requested for adUnitId=$adUnitId")
 
+        if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
+            val failure = AdLoadFailure(AdLoadFailure.CODE_LIBRARY, "Invalid ad unit id \"$adUnitId\"")
+            AdEvents.failedToLoad(context, adUnitId, adType, failure)
+            onResult(null, failure)
+            return
+        }
+        if (!shouldShowAd(context)) {
+            AdsLog.d(TAG, "NativeAd: loadDetached skipped (shouldShowAd returns false)")
+            val failure = AdLoadFailure(
+                AdLoadFailure.CODE_LIBRARY,
+                "Request blocked: premium user, offline, or consent not granted"
+            )
+            AdEvents.failedToLoad(context, adUnitId, adType, failure)
+            onResult(null, failure)
+            return
+        }
+
+        // forNativeAd fires before onAdLoaded, so the ad is parked here and delivered from the
+        // listener - that way exactly one of the two terminal paths reports a result.
+        var pending: NativeAd? = null
+        var delivered = false
+        val deliverOnce = { ad: NativeAd?, failure: AdLoadFailure? ->
+            if (!delivered) {
+                delivered = true
+                onResult(ad, failure)
+            }
+        }
+
+        val adBuilder = AdLoader.Builder(context, adUnitId)
+        adBuilder.forNativeAd { nativeAd -> pending = nativeAd }
+        adBuilder.withNativeAdOptions(
+            NativeAdOptions.Builder()
+                .setVideoOptions(VideoOptions.Builder().setStartMuted(true).build())
+                .setAdChoicesPlacement(adChoicesPlacement)
+                .build()
+        )
+
+        val adLoader = adBuilder.withAdListener(object : AdListener() {
+            override fun onAdLoaded() {
+                super.onAdLoaded()
+                val ad = pending
+                if (ad == null) {
+                    AdsLog.e(TAG, "NativeAd: loadDetached reported loaded but no ad arrived")
+                    deliverOnce(null, AdLoadFailure(AdLoadFailure.CODE_LIBRARY, "No ad in response"))
+                    return
+                }
+                AdsLog.d(TAG, "NativeAd: loadDetached loaded successfully for adUnitId=$adUnitId")
+                AdEvents.loaded(context, adUnitId, adType)
+                deliverOnce(ad, null)
+            }
+
+            override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                super.onAdFailedToLoad(loadAdError)
+                AdsLog.e(TAG, "NativeAd: loadDetached onAdFailedToLoad error=${loadAdError.message}")
+                AdEvents.failedToLoad(context, adUnitId, adType, loadAdError)
+                deliverOnce(
+                    null,
+                    AdLoadFailure(loadAdError.code, loadAdError.message.orEmpty(), loadAdError.domain)
+                )
+            }
+
+            override fun onAdImpression() {
+                super.onAdImpression()
+                AdEvents.impression(context, adUnitId, adType)
+            }
+
+            override fun onAdClicked() {
+                super.onAdClicked()
+                AdEvents.clicked(context, adUnitId, adType)
+            }
+        }).build()
+
+        adLoader.loadAd(AdRequest.Builder().build())
+    }
+
+    /**
+     * Renders an ad the caller already holds into [builder]'s container, hiding the shimmer.
+     *
+     * [showLoadedAd] can only render this loader's own cached ad. Slot-based owners hold their own ads
+     * and need to say *which* one to draw, which is what this adds.
+     */
+    @MainThread
+    @JvmOverloads
+    fun render(
+        nativeAd: NativeAd,
+        builder: NativeAdBuilder,
+        @ValidateAdUnitId adUnitId: String,
+        adType: AdType = AdType.NATIVE
+    ) {
+        builder.shimmerFrameLayout.stopAndHide()
+        renderInto(nativeAd, builder)
+        nativeAd.setOnPaidEventListener { adValue ->
+            analyticsScope.launch {
+                AdEvents.revenue(context.applicationContext, adUnitId, adType, adValue)
+            }
+        }
+    }
 }

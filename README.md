@@ -5,7 +5,11 @@ native, full-screen native and app-open ads, with shimmer placeholders, GDPR con
 single listener for every ad event.
 
 - **minSdk** 24 · **compileSdk** 37 · **Java** 11 · Kotlin, Java-friendly
-- `groupId` `com.umer_tf.ads` · `artifactId` `ads` · `1.1.0`
+- `groupId` `com.umer_tf.ads` · `artifactId` `ads` · `2.0.0`
+
+Every format except app open can be driven from a ViewModel as a `StateFlow` — see
+[Driving ads from a ViewModel](#16-driving-ads-from-a-viewmodel). **2.0.0 rewrites `AdViewModel`;**
+see [Migrating to 2.0.0](#migrating-to-200).
 
 ---
 
@@ -33,7 +37,7 @@ single listener for every ad event.
 13. [Ad expiry](#13-ad-expiry)
 14. [Logging](#14-logging)
 15. [Lifecycle: what you must call](#15-lifecycle-what-you-must-call)
-16. [ViewModel helper](#16-viewmodel-helper)
+16. [Driving ads from a ViewModel](#16-driving-ads-from-a-viewmodel)
 17. [Known gaps](#17-known-gaps)
 18. [Publishing](#18-publishing)
 
@@ -70,7 +74,7 @@ Then depend on it:
 
 ```kotlin
 dependencies {
-    implementation("com.umer_tf.ads:ads:1.1.0")
+    implementation("com.umer_tf.ads:ads:2.0.0")
     implementation("com.facebook.shimmer:shimmer:0.5.0")
 }
 ```
@@ -138,6 +142,12 @@ initializes, in that order. See [Consent](#9-consent-gdpr--ump).
 
 Every setter returns `AdMobManager`, so they chain. `initialize()` is safe to call repeatedly; only the
 first call does work.
+
+> **`initialize()` is not optional.** `getInstance()` only builds the facade — nothing else in the
+> library starts `MobileAds`. Skip it and every request fails, and the AdMob SDK reports it as
+> **"Network error"**, which sends you checking connectivity, the emulator and your ad unit ids
+> instead of this line. The library logs an explicit error once when an ad is requested before
+> `initialize()`; if you see ads failing, check logcat for it first.
 
 The loaders live on the manager:
 
@@ -310,6 +320,10 @@ a cached ad rather than re-requesting. Same knobs — `adShowDelay` and `showLoa
 
 ### 4.4 Native
 
+The shortest path is [`AdViewModel.bindNativeAd`](#161-native--the-whole-integration), which takes a
+shape code (`"4a"`) and an ad unit and handles loading, shimmer, rendering and teardown. The rest of
+this section is the loader API underneath it.
+
 The one-liner: give it a container, a shimmer host and a layout, and it wires the matching shimmer for
 you.
 
@@ -468,6 +482,17 @@ Resume ads are loaded and shown automatically. `isStartAdAvailable()` accounts f
 Call `destroyAds()` when you want to detach the lifecycle observer.
 
 ## 5. Shimmer placeholders
+
+**The library owns the placeholder end to end.** Declare *one* empty `FrameLayout` per ad slot: the
+library inflates the shimmer matching the ad shape into it, sizes it, themes it, starts it, and
+replaces or hides it on *every* terminal outcome — loaded, no fill, malformed ad unit id, blocked by
+consent, offline, premium user, exception. App code never calls `startShimmer`, `stopShimmer` or
+toggles visibility. A premium user does not even get a flash: the placeholder is skipped entirely
+rather than shown and then resolved to an empty slot.
+
+That applies to native slots (`NativeAdShimmer`, keyed off the ad layout) and to banners
+(`BannerShimmer`, keyed off `BannerAdType`). Both also accept a `ShimmerFrameLayout` you supply
+yourself, and drive that instead.
 
 `NativeAdShimmer` is the single source of truth pairing an ad layout with a shimmer of the same shape.
 Use `createNativeAdBuilderAutoShimmer` (above) and you never touch it.
@@ -731,6 +756,9 @@ Malformed ad unit ids throw in debug and log-and-skip in release. Flip with
 
 ## 15. Lifecycle: what you must call
 
+This table applies when you drive the loaders directly. If you use
+[`AdViewModel`](#16-driving-ads-from-a-viewmodel), `bindBanner` and `bindNativeAd` handle all of it.
+
 | Where | Call | Why |
 |---|---|---|
 | `Activity.onPause` | `bannerAdLoader.pause()` | Stops off-screen refresh |
@@ -744,29 +772,170 @@ Malformed ad unit ids throw in debug and log-and-skip in release. Flip with
 Calling `destroy()` on a loader does not make it unusable — it cancels in-flight work and clears
 caches, then the loader is ready again.
 
-## 16. ViewModel helper
+## 16. Driving ads from a ViewModel
 
-`AdViewModel` exposes ad state as `StateFlow` if you'd rather observe than pass callbacks.
+`AdViewModel` owns every format **except app open** and exposes each as a `StateFlow`. App open is
+excluded on purpose: it is driven by `ProcessLifecycleOwner` inside the library and belongs to the
+process, not to a screen. Keep using `appOpenAdLoader` for it — see [4.7](#47-app-open).
+
+It is an `AndroidViewModel`, so there is no factory and it finds `AdMobManager` itself:
 
 ```kotlin
-private val adViewModel: AdViewModel by viewModels()
+private val ads: AdViewModel by viewModels()
+```
 
+### 16.1 Native — the whole integration
+
+**One empty `FrameLayout`** and a shape code. The layout, the matching shimmer, the load, the state
+collection and the teardown are all derived:
+
+```xml
+<FrameLayout android:id="@+id/adSlot"
+    android:layout_width="match_parent" android:layout_height="wrap_content" />
+```
+
+```kotlin
+ads.bindNativeAd(this, NATIVE_UNIT, "4a", binding.adSlot)
+```
+
+The shimmer is inflated into that container and replaced by the ad when it arrives. One view means
+there is no second visibility to keep in sync — a loaded ad can't end up sitting below a leftover
+placeholder's reserved height.
+
+Pass a separate `shimmerHost` only when the placeholder genuinely belongs elsewhere in the layout:
+
+```kotlin
+ads.bindNativeAd(this, NATIVE_UNIT, "4a", binding.adContainer, binding.shimmerHost)
+```
+
+From a Fragment pass `viewLifecycleOwner`, not the Fragment, so the binding dies with the view.
+
+**Layout codes.** `NativeAdLayout` maps a short code to a bundled layout, so `R.layout` constants no
+longer appear in app code. Matching ignores case, separators and prefixes — `"4a"`, `"SMALL_4"` and
+`"layout_native_ad_small_4"` are the same request.
+
+| Code | Shape |
+|---|---|
+| `1a` | media left, text right |
+| `1b` | icon + text, no media |
+| `1c` / `1d` | media left, icon + headline + body |
+| `3a` / `3b` | icon left, CTA right |
+| `4a` | media + icon header (also accepts `4`) |
+| `7a` / `7b` / `7c` | compact, text-forward |
+| `large` | icon header, body, media, CTA |
+| `5a` / `6a` / `6b` | large media variants |
+| `v2` / `v3` | media-first with a rating row |
+| `banner` | 130 dp banner shape |
+| `small` / `largemedia` / `bannermedia` | the library defaults |
+| `fullscreen` | for `FullScreenNativeAdActivity` |
+
+An unrecognised code logs a warning and falls back to `1a` rather than showing nothing. Pass the
+enum directly (`NativeAdLayout.SMALL_4`) if you prefer compile-time checking.
+
+**Observing it yourself** instead of using `bindNativeAd`:
+
+```kotlin
+ads.nativeState(key).collect { state ->
+    when (state) {
+        is NativeAdUiState.Idle    -> ads.loadNative(NATIVE_UNIT, key)
+        is NativeAdUiState.Loading -> Unit
+        is NativeAdUiState.Loaded  -> ads.renderNative(key, builder)
+        is NativeAdUiState.Failed  -> hideAdSlot()
+    }
+}
+```
+
+### 16.2 Slots
+
+Native and banner state is **keyed**, because a screen really can host several at once. The key
+defaults to the ad unit id, and the binding helpers default it to the container's view id — so two
+placements sharing one ad unit still get independent state:
+
+```kotlin
+ads.bindNativeAd(this, NATIVE_UNIT, "1a", binding.topAd, binding.topShimmer)
+ads.bindNativeAd(this, NATIVE_UNIT, "6a", binding.bottomAd, binding.bottomShimmer)
+```
+
+A slot that already holds an ad is left alone, so the ad survives a rotation instead of costing a
+second request. Pass `forceRefresh = true` to replace it deliberately.
+
+Interstitial and rewarded are **not** keyed — the loaders each cache exactly one ad, so pretending
+otherwise would hand two callers the same ad under different names. They are plain
+`ads.interstitialState` / `ads.rewardedState`.
+
+For lists, `ads.nativeAdPool(NATIVE_UNIT, size = 3)` returns a `NativeAdPool` owned and destroyed by
+the ViewModel — see [4.5](#45-native-ads-in-a-list).
+
+### 16.3 Banner
+
+Same deal — one empty `FrameLayout`:
+
+```xml
+<FrameLayout android:id="@+id/bannerSlot"
+    android:layout_width="match_parent" android:layout_height="wrap_content" />
+```
+
+```kotlin
+ads.bindBanner(this, this, BANNER_UNIT, binding.bannerSlot)
+```
+
+`bindBanner` forwards pause / resume / destroy for you, so a screen using it needs **no banner
+lifecycle boilerplate** — the table in [15](#15-lifecycle-what-you-must-call) is already handled.
+Shape comes from `BannerAdType`: `ADAPTIVE`, `MEDIUM_RECTANGLE`, `COLLAPSIBLE_TOP`,
+`COLLAPSIBLE_BOTTOM`.
+
+The `shimmer` argument defaults to the container. Pass a separate container to put the placeholder
+elsewhere, your own `ShimmerFrameLayout` to keep control of it, or null for none.
+
+`ads.showBanner(activity, adUnitId, container, shimmer, type)` is the lower-level call when you need
+to re-request on demand; it publishes to `ads.bannerState(key)` either way.
+
+### 16.4 Full screen: state versus events
+
+```kotlin
+ads.loadInterstitial(INTERSTITIAL_UNIT)
+ads.showInterstitial(this, INTERSTITIAL_UNIT)
+
+ads.loadRewarded(this, REWARDED_UNIT)
+ads.showRewarded(this, REWARDED_UNIT)
+
+// or in one call, behind the loading dialog
+ads.loadAndShowInterstitial(this, INTERSTITIAL_UNIT)
+ads.loadAndShowRewarded(this, REWARDED_UNIT)
+```
+
+`interstitialState` and `rewardedState` are `FullScreenAdUiState`: `Idle`, `Loading`,
+`Loaded`, `Showing`, `Failed`.
+
+**There is deliberately no `Dismissed` state.** A terminal outcome held in a `StateFlow` is
+re-delivered to every new collector, so a screen that navigates on dismissal would navigate again
+after every rotation. Dismissal and reward arrive **once**, on `ads.events`:
+
+```kotlin
 lifecycleScope.launch {
     repeatOnLifecycle(Lifecycle.State.STARTED) {
-        adViewModel.nativeAdState.collect { state ->
-            when (state) {
-                is NativeAdUiState.Idle -> adViewModel.loadNativeAd(ads, NATIVE_UNIT)
-                is NativeAdUiState.Loading -> Unit
-                is NativeAdUiState.Success -> adViewModel.showNativeAd(ads, builder, NATIVE_UNIT)
-                is NativeAdUiState.Error -> hideAdSlot()
+        ads.events.collect { event ->
+            when (event) {
+                is AdEvent.RewardEarned -> grantReward()
+                is AdEvent.ShowFailed   -> log(event.failure.message)
+                is AdEvent.Dismissed    -> goToNextScreen()
             }
         }
     }
 }
 ```
 
-Also `interstitialAdState` (`Idle`/`Loading`/`Loaded`/`Shown`/`Dismissed`/`Error`) and
-`rewardedAdState` (with `Shown(rewardEarned)`).
+`AdEvent.Dismissed` is emitted **exactly once per show attempt**, including when the ad failed to
+show or was blocked — the same guarantee the callback API makes, so navigation gated on it cannot
+stall. `RewardEarned` fires only when the reward was actually granted, and always before
+`Dismissed`. Events are buffered until collected, so one that fires while the screen is stopped is
+not lost. Collect them from one place.
+
+### 16.5 Ownership
+
+Native ads loaded through the ViewModel are owned by it and destroyed in `onCleared` — do not call
+`destroy()` on an ad from `NativeAdUiState.Loaded`. The ViewModel never retains a View: methods that
+take a container use it for the duration of the call only. Call every method from the main thread.
 
 ## 17. Known gaps
 
@@ -781,12 +950,31 @@ Be aware of these before building on it:
 - **No instrumentation tests.** Unit tests cover the pure logic (ad unit validation, shimmer registry,
   consent gate, `AdType` mapping). Nothing automated verifies what actually renders — shimmer/ad shape
   matching, badge visibility, dark mode, the loading dialog.
-- **`NativeAdPool` is untested** and is constructed directly rather than obtained from `AdMobManager`.
+- **`NativeAdPool` is untested.** It can now be obtained from `AdViewModel.nativeAdPool(...)`, which
+  at least ties its lifetime to the screen, but nothing automated exercises it.
 - **`AdEvents` holds a single global listener.** No per-screen registration; clear it with `null`.
 - **Strings are default-locale only** — no translations for `loading_ad`, `ads_close_ad`,
   `ads_sponsored`.
 - **R8 is not proven.** The library ships minimal consumer rules and the sample app enables
   minification, but the new code paths aren't exercised by the sample yet.
+
+### Migrating to 2.0.0
+
+`AdViewModel` was rewritten; nothing else changed. The loader APIs, `AdMobManager` and
+`AdEventListener` are untouched, so an app that does not use `AdViewModel` can upgrade as-is.
+
+| Removed / changed | Replacement |
+|---|---|
+| `AdViewModel` took `AdMobManager` on every method | It is now an `AndroidViewModel` and resolves the manager itself — `by viewModels()`, no arguments |
+| `nativeAdState` (single slot) | `nativeState(key)`; keys default to the container's view id |
+| `NativeAdUiState.Success(ad, id)` | `NativeAdUiState.Loaded(ad, id)` |
+| `NativeAdUiState.Error(message)` | `NativeAdUiState.Failed(adUnitId, failure)`, carrying an `AdLoadFailure` |
+| `loadNativeAd(manager, id)` / `showNativeAd(manager, builder, id)` | `loadNative(id, key)` / `renderNative(key, builder)`, or just `bindNativeAd(...)` |
+| `InterstitialAdUiState` / `RewardedAdUiState` | one `FullScreenAdUiState` for both |
+| `InterstitialAdUiState.Dismissed`, `RewardedAdUiState.Shown(rewardEarned)` | `AdEvent.Dismissed` / `AdEvent.RewardEarned` on `ads.events` — states no longer replay a terminal outcome after rotation |
+| No banner support in the ViewModel | `bindBanner(...)` / `showBanner(...)` / `bannerState(key)` |
+| Native layouts referenced as `R.layout.layout_native_ad_*` | `NativeAdLayout` codes — `"4a"`, `"v2"`, `"large"` |
+| `bannerAdLoader.showAdaptiveBanner` / `showMemRecBanner` / `showCollapsableBanner` | Still present and unchanged; `showBanner(..., type, onResult)` collapses all three and reports the outcome |
 
 ### Migrating from 1.0.x
 

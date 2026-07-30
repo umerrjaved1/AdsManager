@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Design tokens for the bundled native ad layouts.
+
+    The 21 layouts had drifted: five font families, eight text sizes, six icon sizes and two corner
+    radii between them, so two shapes on the same screen did not look like they came from the same
+    library. Sizes are assigned here by the role a view plays, not by the number that happened to be
+    in each file, and every layout references these instead of a literal.
+
+    Change a value here and every shape moves together - which is the point in a product factory,
+    where the alternative is editing twenty-one files and missing three.
+-->
+<resources>
+
+    <!-- Type scale. Five steps, assigned by role: headline, body, CTA, metadata, badge. -->
+    <dimen name="ad_text_headline">16sp</dimen>
+    <dimen name="ad_text_body">14sp</dimen>
+    <dimen name="ad_text_cta">14sp</dimen>
+    <dimen name="ad_text_meta">12sp</dimen>
+    <!-- The "Ad" attribution label. 10sp is the floor: 9sp was in use and is below what the
+         SmallSp lint check considers legible, on a label AdMob policy requires people to read. -->
+    <dimen name="ad_text_badge">10sp</dimen>
+
+    <!-- Spacing, on a 4dp grid. -->
+    <dimen name="ad_padding">12dp</dimen>
+    <dimen name="ad_gap">8dp</dimen>
+    <dimen name="ad_gap_small">4dp</dimen>
+
+    <!-- Corner radii. Matches NativeAdTheme's adCornerRadius default (12dp) so a themed card and
+         its media do not disagree. -->
+    <dimen name="ad_media_radius">12dp</dimen>
+
+    <!-- Icon scale. Kept as a scale rather than one value: a large shape legitimately carries a
+         bigger icon than a compact one. Only the off-scale outliers were snapped. -->
+    <dimen name="ad_icon_small">32dp</dimen>
+    <dimen name="ad_icon_medium">40dp</dimen>
+    <dimen name="ad_icon_large">48dp</dimen>
+    <dimen name="ad_icon_xlarge">64dp</dimen>
+
+    <!-- Android's minimum touch target. An ad CTA below this is genuinely hard to hit. -->
+    <dimen name="ad_cta_height">48dp</dimen>
+
+</resources>

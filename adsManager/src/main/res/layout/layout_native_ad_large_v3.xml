@@ -31,14 +31,14 @@
             android:paddingBottom="2dp"
             android:text="@string/ad"
             android:textColor="@android:color/white"
-            android:textSize="10sp"
+            android:textSize="@dimen/ad_text_badge"
             app:layout_constraintStart_toStartOf="@id/ad_media"
             app:layout_constraintTop_toTopOf="@id/ad_media" />
 
         <ImageView
             android:id="@+id/ad_app_icon"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            android:layout_width="@dimen/ad_icon_xlarge"
+            android:layout_height="@dimen/ad_icon_xlarge"
             android:layout_marginTop="-32dp"
             android:background="@android:color/white"
             android:padding="4dp"
@@ -68,7 +68,7 @@
                 android:maxLines="1"
                 android:text="Castle Clash"
                 android:textColor="#212121"
-                android:textSize="16sp"
+                android:textSize="@dimen/ad_text_headline"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -92,7 +92,7 @@
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/ad_call_to_action"
                 android:layout_width="match_parent"
-                android:layout_height="40dp"
+                android:layout_height="@dimen/ad_cta_height"
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="12dp"
                 android:background="@drawable/cta_v2_background"
@@ -101,7 +101,7 @@
                 android:text="Play Now"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
-                android:textSize="14sp"
+                android:textSize="@dimen/ad_text_cta"
                 android:textStyle="bold" />
 
         </LinearLayout>

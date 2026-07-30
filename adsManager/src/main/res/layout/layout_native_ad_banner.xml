@@ -1,97 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Banner-shaped native ad: icon + headline + body on one row, full-width CTA underneath.
+
+    Rebuilt on ConstraintLayout with an @id/clAd root. The previous RelativeLayout version had no
+    clAd, and populateNativeAdView looks that id up to apply the background colour, corner radius and
+    stroke - so NativeAdTheme was silently a no-op on this one shape while working everywhere else.
+-->
 <com.google.android.gms.ads.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/native_ad_view"
     android:layout_width="match_parent"
-    android:layout_height="130dp">
+    android:layout_height="wrap_content">
 
-    <RelativeLayout
+    <!-- minHeight rather than a fixed height: at large system font scales a fixed 130dp clipped the
+         CTA off the bottom of the card. -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clAd"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:padding="8dp">
+        android:layout_height="wrap_content"
+        android:background="#FFFFFF"
+        android:minHeight="130dp"
+        android:padding="12dp">
 
-        <!-- App Icon -->
         <ImageView
             android:id="@+id/ad_app_icon"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_alignParentStart="true"
-            android:layout_alignParentTop="true"
-            android:layout_marginTop="8dp"
+            android:layout_width="@dimen/ad_icon_medium"
+            android:layout_height="@dimen/ad_icon_medium"
             android:adjustViewBounds="true"
-            android:contentDescription="Add icon" />
+            android:contentDescription="@string/ads_app_icon"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:src="@drawable/bg_rounded_blue" />
 
-        <!-- Ad Badge -->
         <TextView
             android:id="@+id/ad_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignTop="@id/ad_app_icon"
-            android:layout_marginStart="3dp"
-            android:layout_toEndOf="@id/ad_app_icon"
+            android:layout_marginStart="10dp"
             android:background="@drawable/adlibrary_ad_badge_border"
-            android:padding="2dp"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
             android:text="@string/ad"
             android:textColor="@color/ad_badge_text"
-            android:textSize="10sp"
+            android:textSize="@dimen/ad_text_badge"
             android:textStyle="bold"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toTopOf="@id/ad_app_icon"
+            app:layout_goneMarginStart="0dp"
             tools:ignore="SmallSp" />
 
-        <!-- Headline -->
+        <!-- Constrained between the badge and the parent end, so a long headline ellipsizes instead
+             of running off the card - match_parent in the old RelativeLayout overflowed. -->
         <TextView
             android:id="@+id/ad_headline"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_alignTop="@id/ad_app_icon"
             android:layout_marginStart="8dp"
-            android:layout_marginEnd="8dp"
-            android:layout_toEndOf="@id/ad_badge"
             android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
-            android:singleLine="true"
+            android:fontFamily="@font/inter_semibold"
+            android:maxLines="1"
             android:textColor="@color/ad_heading_color"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textSize="@dimen/ad_text_headline"
+            app:layout_constraintBottom_toBottomOf="@id/ad_badge"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_badge"
+            app:layout_constraintTop_toTopOf="@id/ad_badge"
+            tools:text="SadaPay: Money made simple" />
 
-        <!-- Advertiser -->
         <TextView
             android:id="@+id/ad_body"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_below="@id/ad_badge"
-            android:layout_marginStart="8dp"
-            android:layout_marginEnd="8dp"
-            android:layout_toEndOf="@id/ad_app_icon"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="6dp"
             android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
-            android:singleLine="true"
-            android:textColor="@color/ad_heading_color"
-            android:textSize="12sp" />
+            android:fontFamily="@font/inter"
+            android:maxLines="1"
+            android:textColor="@color/onSurfaceVariant"
+            android:textSize="@dimen/ad_text_body"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/ad_badge"
+            app:layout_goneMarginStart="0dp"
+            tools:text="Financial freedom, the Sada way." />
 
-        <!-- Call to Action Button -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_below="@id/ad_app_icon"
-            android:layout_marginTop="2dp"
-            android:orientation="vertical">
+        <!-- No backgroundTint here. populateNativeAdView replaces this background with a themed
+             GradientDrawable, but a tint survives that assignment and recolours it - which is how a
+             themed CTA still came out Google blue. -->
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/ad_call_to_action"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/ad_cta_height"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/cta_shape"
+            android:clickable="true"
+            android:focusable="true"
+            android:fontFamily="@font/inter_bold"
+            android:gravity="center"
+            android:letterSpacing="0.02"
+            android:text="@string/install"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/ad_text_cta"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ad_body" />
 
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/ad_call_to_action"
-                android:layout_width="match_parent"
-                android:layout_height="53dp"
-                android:background="@drawable/cta_shape"
-                android:backgroundTint="#4285F5"
-                android:gravity="center"
-                android:letterSpacing="0.05"
-                android:text="@string/install"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-        </LinearLayout>
-
-    </RelativeLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </com.google.android.gms.ads.nativead.NativeAdView>

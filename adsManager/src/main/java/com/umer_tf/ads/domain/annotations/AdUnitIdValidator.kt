@@ -1,6 +1,6 @@
 package com.umer_tf.ads.domain.annotations
 
-import com.umer_tf.ads.BuildConfig
+import com.umer_tf.ads.domain.utils.AdsEnvironment
 import com.umer_tf.ads.domain.utils.AdsLog
 
 object AdUnitIdValidator {
@@ -16,13 +16,19 @@ object AdUnitIdValidator {
     /**
      * When true, a malformed ad unit id throws instead of being skipped.
      *
-     * Defaults to debug-only. Ad unit ids in a product factory usually arrive from a per-app config
-     * file or build field, and a single typo used to crash the app at the ad call site; in release the
-     * right behaviour is to log loudly and show no ad. Keeping it strict in debug means the typo still
-     * surfaces immediately during development.
+     * Defaults to "the host app is debuggable" - see [AdsEnvironment]. Ad unit ids in a product
+     * factory usually arrive from a per-app config file or build field, and a single typo used to
+     * crash the app at the ad call site; in release the right behaviour is to log loudly and show no
+     * ad. Staying strict in debug means the typo still surfaces immediately during development.
      */
+    private var strictModeOverride: Boolean? = null
+
     @JvmStatic
-    var strictMode: Boolean = BuildConfig.DEBUG
+    var strictMode: Boolean
+        get() = strictModeOverride ?: AdsEnvironment.isHostDebuggable
+        set(value) {
+            strictModeOverride = value
+        }
 
     /**
      * Validates an ad unit id.
@@ -79,7 +85,7 @@ object AdUnitIdValidator {
     /** Logs a warning, once per id, when a Google test ad unit id is used outside a debug build. */
     @JvmStatic
     fun warnIfTestIdInRelease(adUnitId: String) {
-        if (BuildConfig.DEBUG || !isTestAdUnitId(adUnitId)) return
+        if (AdsEnvironment.isHostDebuggable || !isTestAdUnitId(adUnitId)) return
         if (warnedTestIds.add(adUnitId)) {
             AdsLog.w(TAG, "Google TEST ad unit id \"$adUnitId\" is in use outside a debug build.")
         }

@@ -1,8 +1,9 @@
 # Consumer ProGuard/R8 rules shipped to every app that depends on this AAR.
 #
 # Deliberately minimal. The AdMob, Firebase and Shimmer SDKs ship their own consumer rules, and this
-# library uses no reflection, no JNI and no serialised models - so most "recommended" ad-library rule
-# blocks would be cargo cult and would only bloat the host app.
+# library uses no JNI and no serialised models - so most "recommended" ad-library rule blocks would be
+# cargo cult and would only bloat the host app. The one reflective path is ViewModel construction,
+# covered below.
 #
 # How to verify before adding anything here: the sample app now builds with isMinifyEnabled = true, so
 #   ./gradlew :app:assembleRelease
@@ -22,3 +23,11 @@
 -keep public class com.umer_tf.ads.domain.analytics.AdLoadFailure { *; }
 -keep public enum com.umer_tf.ads.domain.analytics.AdType { *; }
 -keep public enum com.umer_tf.ads.domain.analytics.AdValuePrecision { *; }
+
+# AdViewModel is never constructed by the app directly - ViewModelProvider reflects for the
+# (Application) constructor, which R8 cannot see being called. androidx.lifecycle ships a rule of its
+# own, but relying on that is a bad trade here: it costs one line to be explicit, and the failure mode
+# is a crash the first time any ad screen opens, in a release build, in every consuming app.
+-keepclassmembers class * extends androidx.lifecycle.AndroidViewModel {
+    <init>(android.app.Application);
+}

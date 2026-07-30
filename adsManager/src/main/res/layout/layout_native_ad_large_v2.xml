@@ -21,8 +21,8 @@
 
         <ImageView
             android:id="@+id/ad_app_icon"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="@dimen/ad_icon_large"
+            android:layout_height="@dimen/ad_icon_large"
             android:layout_marginStart="8dp"
             android:layout_marginTop="-28dp"
             android:padding="4dp"
@@ -53,7 +53,7 @@
                 android:paddingBottom="2dp"
                 android:text="@string/ad"
                 android:textColor="@color/ad_badge_text"
-                android:textSize="10sp" />
+                android:textSize="@dimen/ad_text_badge" />
 
             <RatingBar
                 android:id="@+id/ad_stars"
@@ -78,7 +78,7 @@
             android:maxLines="1"
             android:text="Headline Headline Headline"
             android:textColor="#212121"
-            android:textSize="16sp"
+            android:textSize="@dimen/ad_text_headline"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -87,7 +87,7 @@
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/ad_call_to_action"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/ad_cta_height"
             android:layout_marginStart="8dp"
             android:layout_marginTop="8dp"
             android:layout_marginEnd="8dp"
@@ -96,7 +96,7 @@
             android:text="Install"
             android:textAllCaps="false"
             android:textColor="@android:color/white"
-            android:textSize="14sp"
+            android:textSize="@dimen/ad_text_cta"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"

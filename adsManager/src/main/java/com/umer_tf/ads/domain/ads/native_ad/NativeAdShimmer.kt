@@ -97,10 +97,24 @@ object NativeAdShimmer {
         host: ViewGroup,
         @LayoutRes adLayoutResId: Int,
         theme: NativeAdTheme? = null
+    ): ShimmerFrameLayout? = inflateInto(host, resolveShimmerLayout(adLayoutResId), theme)
+
+    /**
+     * Inflates an already-resolved shimmer layout into [host], themes it and starts it.
+     *
+     * Split out of [attachTo] so banners can reuse the same inflate-theme-start path without going
+     * through the native layout->shimmer table, which does not describe them.
+     */
+    internal fun inflateInto(
+        host: ViewGroup,
+        @LayoutRes shimmerLayoutResId: Int,
+        theme: NativeAdTheme? = null,
+        clearHost: Boolean = true
     ): ShimmerFrameLayout? {
-        val shimmerLayoutResId = resolveShimmerLayout(adLayoutResId)
         return runCatching {
-            host.removeAllViews()
+            // Not cleared when the host is the ad container itself and already holds the AdView -
+            // wiping it there would detach the very view we are about to load into.
+            if (clearHost) host.removeAllViews()
             val view = LayoutInflater.from(host.context)
                 .inflate(shimmerLayoutResId, host, false)
             host.addView(view)

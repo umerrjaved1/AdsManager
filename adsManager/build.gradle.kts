@@ -57,6 +57,12 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     api(libs.androidx.lifecycle.viewmodel.ktx)
     api(libs.androidx.lifecycle.runtime.ktx)
+
+    // Declared explicitly rather than relied on as a transitive of the lifecycle artifacts. The
+    // public API exposes StateFlow and Flow, so this belongs on the compile classpath of every
+    // consumer by contract - and an undeclared transitive breaks at runtime, in every app at once,
+    // the day AndroidX changes that edge or a host app forces a different coroutines version.
+    api(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
     testImplementation(libs.junit)
@@ -87,7 +93,7 @@ afterEvaluate {
                 from(components.getByName("release"))
                 groupId = "com.umer_tf.ads"
                 artifactId = "ads"
-                version = "1.1.0"
+                version = "2.0.0"
             }
         }
         repositories {

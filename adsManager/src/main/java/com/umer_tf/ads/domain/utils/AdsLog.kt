@@ -1,7 +1,6 @@
 package com.umer_tf.ads.domain.utils
 
 import android.util.Log
-import com.umer_tf.ads.BuildConfig
 
 /**
  * Logging gate for the ads library.
@@ -11,15 +10,23 @@ import com.umer_tf.ads.BuildConfig
  * Informational events now go through [d] and are silent unless logging is enabled; genuine failures
  * still go through [e].
  *
- * Enabled by default in debug builds. Turn it on for a release build (to debug mediation, say) with:
+ * Enabled by default when the **host app** is debuggable - see [AdsEnvironment]; the library's own
+ * `BuildConfig.DEBUG` is always false in a published AAR and must not be used for this. Turn it on
+ * for a release build (to debug mediation, say) with:
  * ```kotlin
  * AdsLog.isEnabled = true
  * ```
  */
 object AdsLog {
 
+    private var explicitOverride: Boolean? = null
+
     @JvmStatic
-    var isEnabled: Boolean = BuildConfig.DEBUG
+    var isEnabled: Boolean
+        get() = explicitOverride ?: AdsEnvironment.isHostDebuggable
+        set(value) {
+            explicitOverride = value
+        }
 
     @JvmStatic
     @JvmOverloads

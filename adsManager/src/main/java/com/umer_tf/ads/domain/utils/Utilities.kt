@@ -53,6 +53,9 @@ object Utilities {
      * @see com.umer_tf.ads.domain.consent.AdsConsentGate
      */
     fun shouldShowAd(context: Context?): Boolean {
+        // Warn rather than block: an app that has genuinely not initialized is broken either way, and
+        // failing the gate here would hide the real reason behind a generic "request blocked".
+        AdMobManager.warnIfNotInitialized()
         if (AdMobManager.isPremium) return false
         if (!isNetworkAvailable(context)) return false
         if (!AdsConsentGate.allowsAdRequests()) {

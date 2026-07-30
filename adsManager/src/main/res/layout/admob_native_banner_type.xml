@@ -50,7 +50,7 @@
                 android:includeFontPadding="false"
                 android:singleLine="true"
                 android:textColor="@color/ad_text_primary"
-                android:textSize="@dimen/_13sdp"
+                android:textSize="@dimen/ad_text_headline"
                 app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
                 app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
                 app:layout_constraintTop_toTopOf="@+id/ad_app_icon" />
@@ -67,7 +67,7 @@
                 android:text="Open"
                 android:textAllCaps="false"
                 android:textColor="@color/ad_cta_text"
-                android:textSize="@dimen/_11ssp"
+                android:textSize="@dimen/ad_text_cta"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -91,7 +91,7 @@
                 android:maxLines="3"
                 android:text="The ultimate PDF reader Redefine your PDF reading. Make it worthwhile for your reading tool"
                 android:textColor="@color/ad_text_primary"
-                android:textSize="@dimen/_11sdp"
+                android:textSize="@dimen/ad_text_body"
                 android:visibility="visible"
                 app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
                 app:layout_constraintStart_toEndOf="@+id/textView17"
@@ -102,7 +102,7 @@
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:gravity="bottom"
-                android:textSize="@dimen/_9sdp"
+                android:textSize="@dimen/ad_text_meta"
                 android:textStyle="normal"
                 android:visibility="gone"
                 app:layout_constraintStart_toStartOf="parent"
@@ -129,7 +129,7 @@
                 android:paddingLeft="5dp"
                 android:paddingEnd="5dp"
                 android:paddingRight="5dp"
-                android:textSize="12sp"
+                android:textSize="@dimen/ad_text_meta"
                 android:visibility="gone"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -142,7 +142,7 @@
                 android:paddingLeft="5dp"
                 android:paddingEnd="5dp"
                 android:paddingRight="5dp"
-                android:textSize="12sp"
+                android:textSize="@dimen/ad_text_meta"
                 android:visibility="gone"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
