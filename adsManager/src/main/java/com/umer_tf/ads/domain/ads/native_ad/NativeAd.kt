@@ -1,5 +1,6 @@
 package com.umer_tf.ads.domain.ads.native_ad
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -60,6 +61,7 @@ class NativeAd(
     override fun loadAndShow(
         @ValidateAdUnitId adUnitId: String,
         builder: NativeAdBuilder,
+        activity: Activity,
         onSuccessListener: OnSuccessListener<Boolean>?
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
@@ -147,7 +149,7 @@ class NativeAd(
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob")
+                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob ${activity.javaClass.simpleName}")
                 builder.shimmerFrameLayout?.stopShimmer()
                 builder.shimmerFrameLayout?.visibility = View.GONE
                 onSuccessListener?.onSuccess(true)
@@ -157,6 +159,7 @@ class NativeAd(
             override fun onAdImpression() {
                 super.onAdImpression()
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd")
+                Log.d("AdmobNative", "Monetization :- onAdImpression (loadAndShow): Admob ${activity.javaClass.simpleName}")
             }
         }).build()
 
@@ -171,7 +174,9 @@ class NativeAd(
     @MainThread
     override fun loadAd(
         @ValidateAdUnitId adUnitId: String,
+        activity: Activity,
         onSuccessListener: OnSuccessListenerNative<Boolean,NativeAd?>?,
+
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
 
@@ -210,14 +215,14 @@ class NativeAd(
 
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob")
+                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob ${activity.javaClass.simpleName}")
                 context.showToast("Native ad loaded")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
             }
 
             override fun onAdImpression() {
                 super.onAdImpression()
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd")
+                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd" )
             }
         }).build()
 
@@ -230,7 +235,7 @@ class NativeAd(
      * @param adUnitId The ad unit ID for Appsflyer.
      */
     @MainThread
-    override fun showLoadedAd(builder: NativeAdBuilder, @ValidateAdUnitId adUnitId: String) {
+    override fun showLoadedAd(builder: NativeAdBuilder, @ValidateAdUnitId adUnitId: String,activity: Activity) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
         if (!shouldShowAd(context)) {
             builder.shimmerFrameLayout?.stopShimmer()
@@ -243,6 +248,7 @@ class NativeAd(
             builder.let { builder ->
                 val adView = LayoutInflater.from(context).inflate(if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout, null) as NativeAdView
                 populateNativeAdView(it, adView, builder)
+                Log.d("AdmobNative", "Monetization :- (show loaded) ${activity.javaClass.simpleName}")
                 builder.frameLayout?.removeAllViews()
                 builder.frameLayout?.addView(adView)
                 if (builder.frameLayout?.visibility == View.GONE) {

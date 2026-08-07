@@ -25,12 +25,12 @@ open class BaseObserver(application: Application) : Application.ActivityLifecycl
 
     override fun onActivityStarted(activity: Activity) {
         currentActivity = activity
-        Log.d(TAG, "Monetization :- onActivityStarted: $activity")
+        Log.d(TAG, " :- onActivityStarted: $activity")
     }
 
     override fun onActivityResumed(activity: Activity) {
         currentActivity = activity
-        Log.d(TAG, "Monetization :- onActivityResumed: $activity")
+        Log.d(TAG, " :- onActivityResumed: $activity")
     }
 
     override fun onActivityPaused(p0: Activity) {
@@ -46,7 +46,7 @@ open class BaseObserver(application: Application) : Application.ActivityLifecycl
         if (activity == currentActivity) {
             currentActivity = null
         }
-        Log.d(TAG, "Monetization :- onActivityDestroyed: $activity")
+        Log.d(TAG, " :- onActivityDestroyed: $activity")
     }
 
 }
