@@ -48,7 +48,6 @@ class NativeAd(
     private val TAG = "NativeAd"
 
     private var loadedNativeAd: NativeAd? = null
-    private var loadAndShowNativeAd: NativeAd? = null
 
     private var exitNativeAd: NativeAd? = null
 
@@ -70,10 +69,29 @@ class NativeAd(
             onSuccessListener?.onSuccess(false)
             return
         }
-        if (loadAndShowNativeAd!=null){
-            loadAndShowNativeAd?.destroy()
-            loadAndShowNativeAd=null
+
+        if (loadedNativeAd != null) {
+            builder.shimmerFrameLayout?.stopShimmer()
+            builder.shimmerFrameLayout?.visibility = View.GONE
+
+            val adView = LayoutInflater.from(context).inflate(
+                if (builder.layout == 0)
+                    R.layout.admob_small_native_media
+                else
+                    builder.layout,
+                null
+            ) as NativeAdView
+
+            populateNativeAdView(loadedNativeAd!!, adView, builder)
+
+            builder.frameLayout?.removeAllViews()
+            builder.frameLayout?.addView(adView)
+            builder.frameLayout?.visibility = View.VISIBLE
+
+            onSuccessListener?.onSuccess(true)
+            return
         }
+
         builder.frameLayout?.visibility = View.GONE
         builder.shimmerFrameLayout?.startShimmer()
         builder.shimmerFrameLayout?.visibility = View.VISIBLE
@@ -82,7 +100,6 @@ class NativeAd(
         lateinit var adView: NativeAdView
         // OnLoadedListener implementation.
         adBuilder.forNativeAd { nativeAd ->
-            loadAndShowNativeAd=nativeAd
             adView = LayoutInflater.from(context).inflate(if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout, null) as NativeAdView
 
             populateNativeAdView(nativeAd, adView, builder)
@@ -160,6 +177,10 @@ class NativeAd(
 
         if (!shouldShowAd(context)) {
             onSuccessListener?.onSuccess(false,null)
+            return
+        }
+        if (loadedNativeAd != null){
+            onSuccessListener?.onSuccess(true, loadedNativeAd!!)
             return
         }
 
@@ -244,8 +265,6 @@ class NativeAd(
     override fun destroy() {
         loadedNativeAd?.destroy()
         loadedNativeAd = null
-        loadAndShowNativeAd?.destroy()
-        loadAndShowNativeAd = null
         exitNativeAd?.destroy()
         exitNativeAd = null
     }

@@ -41,6 +41,10 @@ class RewardedAdLoader(
         AdUnitIdValidator.validateAdUnitId(adUnitId)
         if (!shouldShowAd(context)) return
 
+        if (rewardedAd != null){
+            return
+        }
+
         val adRequest = AdRequest.Builder().build()
         RewardedAd.load(activity, adUnitId, adRequest, object : RewardedAdLoadCallback() {
             override fun onAdFailedToLoad(adError: LoadAdError) {
@@ -113,6 +117,14 @@ class RewardedAdLoader(
             return
         }
         if (showDialog) loadingDialogUtil.showLoadingDialog()
+
+        if (rewardedAd != null){
+            showAd(activity, onRewardEarned)
+            return
+        }
+
+
+
         val adRequest = AdRequest.Builder().build()
         RewardedAd.load(activity, adUnitId, adRequest, object : RewardedAdLoadCallback() {
             override fun onAdFailedToLoad(adError: LoadAdError) {

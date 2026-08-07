@@ -150,7 +150,8 @@ class InterstitialAdLoader(
                     adController.shouldShowOpenAd = true
                     interstitialAd = null
                     onSuccessListener?.onSuccess(true)
-                    AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
+                    AnalyticsManager.getInstance(context)
+                        .sendAnalytics(AD_DISMISSED, "Interstitial_ad")
                 }
 
                 override fun onAdFailedToShowFullScreenContent(adError: AdError) {
@@ -166,12 +167,18 @@ class InterstitialAdLoader(
 
                 override fun onAdClicked() {
                     super.onAdClicked()
-                    AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "Interstitial_ad")
+                    AnalyticsManager.getInstance(context)
+                        .sendAnalytics(AD_CLICKED, "Interstitial_ad")
                 }
             }
             ad.setOnPaidEventListener { adValue ->
                 coroutineScope.launch {
-                    AdsAnalytics.logAppsFlyerRevenue(ad.adUnitId, "Interstitial", adValue, activity.application)
+                    AdsAnalytics.logAppsFlyerRevenue(
+                        ad.adUnitId,
+                        "Interstitial",
+                        adValue,
+                        activity.application
+                    )
                 }
             }
             ad.show(activity)
@@ -198,7 +205,10 @@ class InterstitialAdLoader(
             onSuccessListener?.onSuccess(false)
             return
         }
-        Log.d(TAG, "Monetization :- showAdWithTimeAndCounter: mInterstitialAdCounter: $mInterstitialAdCounter")
+        Log.d(
+            TAG,
+            "Monetization :- showAdWithTimeAndCounter: mInterstitialAdCounter: $mInterstitialAdCounter"
+        )
         if (interstitialAd != null) {
             showAd(activity, adUnitId, onSuccessListener)
         } else {
@@ -221,66 +231,145 @@ class InterstitialAdLoader(
         kotlin.runCatching {
             loadingDialogUtil?.destroy()
             loadingDialogUtil = LoadingDialogUtil.create(activity)
-            if (!activity.isFinishing && showDialog) {
-                loadingDialogUtil?.showLoadingDialog()
-            }
-            val adRequest = AdRequest.Builder().build()
-            InterstitialAd.load(activity, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(ad: InterstitialAd) {
-                    Log.d(TAG, "Monetization :- onAdLoaded")
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
-                        if (!activity.isFinishing) {
-                            ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                                override fun onAdDismissedFullScreenContent() {
-                                    TimeManager.getInstance().reset()
-                                    mInterstitialAdCounter = 0
-                                    adController.shouldShowOpenAd = true
-                                    interstitialAd = null
-                                    onSuccessListener?.onSuccess(true)
-                                    Log.d(TAG, "Monetization :- The ad was dismissed.")
-                                    AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
-                                }
 
-                                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                                    interstitialAd = null
-                                    onSuccessListener?.onSuccess(false)
-                                    Log.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent")
-                                }
-
-                                override fun onAdShowedFullScreenContent() {
-                                    adController.shouldShowOpenAd = false
-                                    interstitialAd = null
-                                    Log.d(TAG, "Monetization :- The ad was shown.")
-                                    AnalyticsManager.getInstance(context).sendAnalytics(SHOWING_AD, "Interstitial_ad")
-                                }
-
-                                override fun onAdClicked() {
-                                    super.onAdClicked()
-                                    AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "Interstitial_ad")
-                                }
+            if (interstitialAd != null) {
+                if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
+                if (!activity.isFinishing) {
+                    interstitialAd?.fullScreenContentCallback =
+                        object : FullScreenContentCallback() {
+                            override fun onAdDismissedFullScreenContent() {
+                                TimeManager.getInstance().reset()
+                                mInterstitialAdCounter = 0
+                                adController.shouldShowOpenAd = true
+                                interstitialAd = null
+                                onSuccessListener?.onSuccess(true)
+                                Log.d(TAG, "Monetization :- The ad was dismissed.")
+                                AnalyticsManager.getInstance(context)
+                                    .sendAnalytics(AD_DISMISSED, "Interstitial_ad")
                             }
-                            ad.setOnPaidEventListener { adValue ->
-                                coroutineScope.launch {
-                                    AdsAnalytics.logAppsFlyerRevenue(ad.adUnitId, "Interstitial", adValue, activity.application)
-                                }
+
+                            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                                interstitialAd = null
+                                onSuccessListener?.onSuccess(false)
+                                Log.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent")
                             }
-                            ad.show(activity)
+
+                            override fun onAdShowedFullScreenContent() {
+                                adController.shouldShowOpenAd = false
+                                interstitialAd = null
+                                Log.d(
+                                    TAG,
+                                    "Monetization :- The ad was shown. on activity ${activity.javaClass.simpleName}"
+                                )
+                                AnalyticsManager.getInstance(context)
+                                    .sendAnalytics(SHOWING_AD, "Interstitial_ad")
+                            }
+
+                            override fun onAdClicked() {
+                                super.onAdClicked()
+                                AnalyticsManager.getInstance(context)
+                                    .sendAnalytics(AD_CLICKED, "Interstitial_ad")
+                            }
                         }
-                    }, adShowDelay)
-                }
-
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    Log.d(TAG, "Monetization :- onAdFailedToLoad: ${loadAdError.message}")
-                    onSuccessListener?.onSuccess(false)
-                    if (!activity.isFinishing) {
-                        Handler(Looper.getMainLooper()).post {
-                            loadingDialogUtil?.hideLoadingDialog()
+                    interstitialAd?.setOnPaidEventListener { adValue ->
+                        coroutineScope.launch {
+                            AdsAnalytics.logAppsFlyerRevenue(
+                                interstitialAd?.adUnitId ?: return@launch,
+                                "Interstitial",
+                                adValue,
+                                activity.application
+                            )
                         }
                     }
-                    AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "Interstitial_ad")
+                    interstitialAd?.show(activity)
                 }
-            })
+
+                return@runCatching
+            }
+
+            val adRequest = AdRequest.Builder().build()
+            InterstitialAd.load(
+                activity,
+                adUnitId,
+                adRequest,
+                object : InterstitialAdLoadCallback() {
+                    override fun onAdLoaded(ad: InterstitialAd) {
+                        Log.d(
+                            TAG,
+                            "Monetization :- onAdLoaded on activity ${activity.javaClass.simpleName}"
+                        )
+                        if (!activity.isFinishing && showDialog) {
+                            loadingDialogUtil?.showLoadingDialog()
+                        }
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
+                            if (!activity.isFinishing) {
+                                ad.fullScreenContentCallback =
+                                    object : FullScreenContentCallback() {
+                                        override fun onAdDismissedFullScreenContent() {
+                                            TimeManager.getInstance().reset()
+                                            mInterstitialAdCounter = 0
+                                            adController.shouldShowOpenAd = true
+                                            interstitialAd = null
+                                            onSuccessListener?.onSuccess(true)
+                                            Log.d(TAG, "Monetization :- The ad was dismissed.")
+                                            AnalyticsManager.getInstance(context)
+                                                .sendAnalytics(AD_DISMISSED, "Interstitial_ad")
+                                        }
+
+                                        override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                                            interstitialAd = null
+                                            onSuccessListener?.onSuccess(false)
+                                            Log.d(
+                                                TAG,
+                                                "Monetization :- onAdFailedToShowFullScreenContent"
+                                            )
+                                        }
+
+                                        override fun onAdShowedFullScreenContent() {
+                                            adController.shouldShowOpenAd = false
+                                            interstitialAd = null
+                                            Log.d(
+                                                TAG,
+                                                "Monetization :- The ad was shown. on activity ${activity.javaClass.simpleName}"
+                                            )
+                                            AnalyticsManager.getInstance(context)
+                                                .sendAnalytics(SHOWING_AD, "Interstitial_ad")
+                                        }
+
+                                        override fun onAdClicked() {
+                                            super.onAdClicked()
+                                            AnalyticsManager.getInstance(context)
+                                                .sendAnalytics(AD_CLICKED, "Interstitial_ad")
+                                        }
+                                    }
+                                ad.setOnPaidEventListener { adValue ->
+                                    coroutineScope.launch {
+                                        AdsAnalytics.logAppsFlyerRevenue(
+                                            ad.adUnitId,
+                                            "Interstitial",
+                                            adValue,
+                                            activity.application
+                                        )
+                                    }
+                                }
+                                ad.show(activity)
+                            }
+                        }, adShowDelay)
+                    }
+
+                    override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                        Log.d(TAG, "Monetization :- onAdFailedToLoad: ${loadAdError.message}")
+                        onSuccessListener?.onSuccess(false)
+                        if (!activity.isFinishing) {
+                            Handler(Looper.getMainLooper()).post {
+                                loadingDialogUtil?.hideLoadingDialog()
+                            }
+                        }
+                        AnalyticsManager.getInstance(context)
+                            .sendAnalytics(AD_FAILED, "Interstitial_ad")
+                    }
+                })
         }.getOrElse {
             Log.e(TAG, "Monetization :- loadAndShowInterstitialAd: Exception-> $it")
             onSuccessListener?.onSuccess(false)
@@ -295,7 +384,10 @@ class InterstitialAdLoader(
         val adCounterMet = mInterstitialAdCounter >= adController.interstitialCounter
         val minTimeMet = elapsedTime >= adController.interstitialAdMinTime
         val maxTimeMet = elapsedTime >= adController.interstitialAdMaxTime
-        Log.d(TAG, "Monetization :- shouldShowInterstitialAd: counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet")
+        Log.d(
+            TAG,
+            "Monetization :- shouldShowInterstitialAd: counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet"
+        )
         return (adCounterMet && minTimeMet) || maxTimeMet
     }
 }
