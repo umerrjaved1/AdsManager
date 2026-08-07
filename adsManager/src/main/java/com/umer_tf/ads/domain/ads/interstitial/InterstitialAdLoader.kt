@@ -233,8 +233,8 @@ class InterstitialAdLoader(
             loadingDialogUtil = LoadingDialogUtil.create(activity)
 
             if (interstitialAd != null) {
-                if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
                 if (!activity.isFinishing) {
+                    loadingDialogUtil?.showLoadingDialog()
                     interstitialAd?.fullScreenContentCallback =
                         object : FullScreenContentCallback() {
                             override fun onAdDismissedFullScreenContent() {
@@ -246,11 +246,14 @@ class InterstitialAdLoader(
                                 Log.d(TAG, "Monetization :- The ad was dismissed.")
                                 AnalyticsManager.getInstance(context)
                                     .sendAnalytics(AD_DISMISSED, "Interstitial_ad")
+                                if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
+
                             }
 
                             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
                                 interstitialAd = null
                                 onSuccessListener?.onSuccess(false)
+                                if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
                                 Log.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent")
                             }
 
@@ -302,7 +305,6 @@ class InterstitialAdLoader(
                             loadingDialogUtil?.showLoadingDialog()
                         }
                         Handler(Looper.getMainLooper()).postDelayed({
-                            if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
                             if (!activity.isFinishing) {
                                 ad.fullScreenContentCallback =
                                     object : FullScreenContentCallback() {
@@ -315,6 +317,7 @@ class InterstitialAdLoader(
                                             Log.d(TAG, "Monetization :- The ad was dismissed.")
                                             AnalyticsManager.getInstance(context)
                                                 .sendAnalytics(AD_DISMISSED, "Interstitial_ad")
+                                            if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
                                         }
 
                                         override fun onAdFailedToShowFullScreenContent(adError: AdError) {
@@ -324,6 +327,7 @@ class InterstitialAdLoader(
                                                 TAG,
                                                 "Monetization :- onAdFailedToShowFullScreenContent"
                                             )
+                                            if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
                                         }
 
                                         override fun onAdShowedFullScreenContent() {
