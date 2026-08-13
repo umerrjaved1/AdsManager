@@ -33,9 +33,59 @@ import kotlinx.coroutines.launch
  */
 class BannerAdLoader: IBannerAdLoader {
     val TAG = "BannerAdLoader"
-    
+
     // Proper coroutine scope that cancels when loader is destroyed
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** Live AdView per host frame, so the one being replaced can be destroyed. */
+    private val adViewsByFrame = java.util.WeakHashMap<FrameLayout, AdView>()
+
+    /** Frames already bound to their Activity lifecycle, to register the observer only once. */
+    private val observedFrames = java.util.WeakHashMap<FrameLayout, Boolean>()
+
+    /**
+     * Puts [adView] in [frameLayout] and takes over the lifecycle of the banner it replaces.
+     *
+     * Two leaks used to come out of this and both cost show rate:
+     *
+     * 1. Every reload created a new AdView and only *detached* the old one. A detached AdView keeps
+     *    its own refresh timer (AdMob "automatic refresh" on the unit), so each reload left behind
+     *    another invisible AdView requesting ads forever - requests that can never be seen.
+     * 2. Nothing ever called `pause()`, so the visible AdView also kept refreshing while its screen
+     *    was paused or the app was in the background.
+     *
+     * A unit that requests constantly without displaying gets its fill rate throttled, which is why
+     * this also shows up as a falling match rate.
+     */
+    private fun attachAdView(activity: Activity, frameLayout: FrameLayout, adView: AdView) {
+        adViewsByFrame.put(frameLayout, adView)?.takeIf { it !== adView }?.let { previous ->
+            Log.d(TAG, "Monetization :- destroying the banner this frame held before")
+            previous.visibility = View.GONE
+            previous.destroy()
+        }
+        frameLayout.removeAllViews()
+        frameLayout.addView(adView)
+
+        if (observedFrames[frameLayout] == true) return
+        val owner = activity as? androidx.lifecycle.LifecycleOwner ?: return
+        observedFrames[frameLayout] = true
+        // One observer per frame, always acting on whichever AdView is current.
+        owner.lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onPause(owner: androidx.lifecycle.LifecycleOwner) {
+                adViewsByFrame[frameLayout]?.pause()
+            }
+
+            override fun onResume(owner: androidx.lifecycle.LifecycleOwner) {
+                adViewsByFrame[frameLayout]?.resume()
+            }
+
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                adViewsByFrame.remove(frameLayout)?.destroy()
+                observedFrames.remove(frameLayout)
+                owner.lifecycle.removeObserver(this)
+            }
+        })
+    }
 
     /**
      * Shows an adaptive banner ad.
@@ -64,8 +114,7 @@ class BannerAdLoader: IBannerAdLoader {
 
             val adView = AdView(activity)
             adView.adUnitId = adUnitId
-            frameLayout.removeAllViews()
-            frameLayout.addView(adView)
+            attachAdView(activity, frameLayout, adView)
 
             val adSize = getAdSize(activity)
             adView.setAdSize(adSize)
@@ -140,8 +189,7 @@ class BannerAdLoader: IBannerAdLoader {
 
             val adView = AdView(activity)
             adView.adUnitId = adUnitId
-            frameLayout.removeAllViews()
-            frameLayout.addView(adView)
+            attachAdView(activity, frameLayout, adView)
 
             adView.setAdSize(AdSize.MEDIUM_RECTANGLE)
 
@@ -214,8 +262,7 @@ class BannerAdLoader: IBannerAdLoader {
 
             val adView = AdView(activity)
             adView.adUnitId = adUnitId
-            frameLayout.removeAllViews()
-            frameLayout.addView(adView)
+            attachAdView(activity, frameLayout, adView)
             if (frameLayout.visibility == View.GONE) frameLayout.visibility = View.VISIBLE
             val adSize = getAdSize(activity)
             adView.setAdSize(adSize)

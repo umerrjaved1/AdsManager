@@ -50,7 +50,54 @@ class NativeAd(
 
     private var loadedNativeAd: NativeAd? = null
 
+    /**
+     * Ad unit the cached [loadedNativeAd] was loaded for. A cache without this is unusable:
+     * handing a placement an ad loaded for a different unit renders the wrong creative and
+     * attributes its revenue to the wrong unit.
+     */
+    private var loadedNativeAdUnitId: String? = null
+
+    /**
+     * Ad currently rendered in each frame, so replacing a frame's content can destroy the ad it
+     * held. Keyed weakly by the host frame: only the ad being replaced right now is destroyed,
+     * never one still on screen elsewhere.
+     */
+    private val adsByFrame = java.util.WeakHashMap<android.widget.FrameLayout, NativeAd>()
+
     private var exitNativeAd: NativeAd? = null
+
+    /** Cached ad for [adUnitId], or null when the cache holds another unit's ad (or nothing). */
+    private fun cachedAdFor(adUnitId: String): NativeAd? =
+        if (loadedNativeAdUnitId == adUnitId) loadedNativeAd else null
+
+    /**
+     * Takes the cached ad for [adUnitId] and empties the cache. A preloaded ad is good for exactly
+     * one display: leaving it cached made every later placement re-render the same object, which
+     * produces no new request and no new impression.
+     */
+    private fun consumeCachedAd(adUnitId: String): NativeAd? {
+        val ad = cachedAdFor(adUnitId) ?: return null
+        loadedNativeAd = null
+        loadedNativeAdUnitId = null
+        return ad
+    }
+
+    /** Renders [ad] into the builder's frame, destroying whatever that frame held before. */
+    private fun bindToFrame(ad: NativeAd, builder: NativeAdBuilder) {
+        val adView = LayoutInflater.from(context).inflate(
+            if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout,
+            null
+        ) as NativeAdView
+
+        populateNativeAdView(ad, adView, builder)
+
+        builder.frameLayout?.let { frame ->
+            adsByFrame.put(frame, ad)?.takeIf { it !== ad }?.destroy()
+            frame.removeAllViews()
+            frame.addView(adView)
+            frame.visibility = View.VISIBLE
+        }
+    }
 
     /**
      * Loads and shows a native ad.
@@ -72,24 +119,25 @@ class NativeAd(
             return
         }
 
-        if (loadedNativeAd != null) {
+        // Use a preloaded ad only when it was loaded for THIS unit, and consume it so the next
+        // placement loads its own instead of re-rendering this one.
+        consumeCachedAd(adUnitId)?.let { cached ->
+            Log.d(TAG, "Monetization :- loadAndShow using preloaded ad for $adUnitId")
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
-
-            val adView = LayoutInflater.from(context).inflate(
-                if (builder.layout == 0)
-                    R.layout.admob_small_native_media
-                else
-                    builder.layout,
-                null
-            ) as NativeAdView
-
-            populateNativeAdView(loadedNativeAd!!, adView, builder)
-
-            builder.frameLayout?.removeAllViews()
-            builder.frameLayout?.addView(adView)
-            builder.frameLayout?.visibility = View.VISIBLE
-
+            bindToFrame(cached, builder)
+            // Same revenue reporting as the fresh-load and showLoadedAd paths - without this a
+            // preloaded ad displayed through loadAndShow earned money that never reached analytics.
+            cached.setOnPaidEventListener { adValue ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    AdsAnalytics.logAppsFlyerRevenue(
+                        adUnitId,
+                        "Native",
+                        adValue,
+                        context.applicationContext
+                    )
+                }
+            }
             onSuccessListener?.onSuccess(true)
             return
         }
@@ -99,17 +147,9 @@ class NativeAd(
         builder.shimmerFrameLayout?.visibility = View.VISIBLE
 
         val adBuilder = context.let { AdLoader.Builder(it, adUnitId) }
-        lateinit var adView: NativeAdView
         // OnLoadedListener implementation.
         adBuilder.forNativeAd { nativeAd ->
-            adView = LayoutInflater.from(context).inflate(if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout, null) as NativeAdView
-
-            populateNativeAdView(nativeAd, adView, builder)
-            builder.frameLayout?.removeAllViews()
-            builder.frameLayout?.addView(adView)
-            if (builder.frameLayout?.visibility == View.GONE) {
-                builder.frameLayout?.visibility = View.VISIBLE
-            }
+            bindToFrame(nativeAd, builder)
 
             nativeAd.setOnPaidEventListener { adValue ->
                 CoroutineScope(Dispatchers.IO).launch {
@@ -143,6 +183,11 @@ class NativeAd(
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
                 Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + loadAdError.message)
+                // No-fill must clear the placeholder: leaving it running is what made empty
+                // shimmers pulse forever on screens whose ad never arrived.
+                builder.shimmerFrameLayout?.stopShimmer()
+                builder.shimmerFrameLayout?.visibility = View.GONE
+                builder.frameLayout?.visibility = View.GONE
                 onSuccessListener?.onSuccess(false)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
             }
@@ -184,14 +229,21 @@ class NativeAd(
             onSuccessListener?.onSuccess(false,null)
             return
         }
-        if (loadedNativeAd != null){
-            onSuccessListener?.onSuccess(true, loadedNativeAd!!)
+        // Only a cached ad for the SAME unit can satisfy this request. Returning another unit's
+        // ad meant the requested unit was never actually loaded.
+        cachedAdFor(adUnitId)?.let { cached ->
+            onSuccessListener?.onSuccess(true, cached)
             return
         }
+        // A cached ad for a different unit will never be used now - free it before loading.
+        loadedNativeAd?.destroy()
+        loadedNativeAd = null
+        loadedNativeAdUnitId = null
 
         val adBuilder = AdLoader.Builder(context, adUnitId)
         adBuilder.forNativeAd { nativeAd ->
             loadedNativeAd = nativeAd
+            loadedNativeAdUnitId = adUnitId
             onSuccessListener?.onSuccess(true,nativeAd)
         }
 
@@ -242,28 +294,27 @@ class NativeAd(
             builder.shimmerFrameLayout?.visibility = View.GONE
             return
         }
-        loadedNativeAd?.let {
+        // Consume: one preloaded ad displays once. Keeping it cached made every later placement
+        // re-render this same object - no request, no impression, wrong unit in the report.
+        val ad = consumeCachedAd(adUnitId)
+        if (ad == null) {
+            Log.d("AdmobNative", "Monetization :- showLoadedAd: no preloaded ad for $adUnitId")
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
-            builder.let { builder ->
-                val adView = LayoutInflater.from(context).inflate(if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout, null) as NativeAdView
-                populateNativeAdView(it, adView, builder)
-                Log.d("AdmobNative", "Monetization :- (show loaded) ${activity.javaClass.simpleName}")
-                builder.frameLayout?.removeAllViews()
-                builder.frameLayout?.addView(adView)
-                if (builder.frameLayout?.visibility == View.GONE) {
-                    builder.frameLayout?.visibility = View.VISIBLE
-                }
-            }
-            it.setOnPaidEventListener { adValue ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    AdsAnalytics.logAppsFlyerRevenue(
-                        adUnitId,
-                        "Native",
-                        adValue,
-                        context.applicationContext
-                    )
-                }
+            return
+        }
+        builder.shimmerFrameLayout?.stopShimmer()
+        builder.shimmerFrameLayout?.visibility = View.GONE
+        Log.d("AdmobNative", "Monetization :- (show loaded) ${activity.javaClass.simpleName}")
+        bindToFrame(ad, builder)
+        ad.setOnPaidEventListener { adValue ->
+            CoroutineScope(Dispatchers.IO).launch {
+                AdsAnalytics.logAppsFlyerRevenue(
+                    adUnitId,
+                    "Native",
+                    adValue,
+                    context.applicationContext
+                )
             }
         }
     }
@@ -271,6 +322,9 @@ class NativeAd(
     override fun destroy() {
         loadedNativeAd?.destroy()
         loadedNativeAd = null
+        loadedNativeAdUnitId = null
+        adsByFrame.values.forEach { it.destroy() }
+        adsByFrame.clear()
         exitNativeAd?.destroy()
         exitNativeAd = null
     }
@@ -278,6 +332,9 @@ class NativeAd(
     override fun isAdLoaded(): Boolean {
         return loadedNativeAd != null
     }
+
+    /** True when a preloaded ad for exactly [adUnitId] is cached and unused. */
+    fun isAdLoaded(adUnitId: String): Boolean = cachedAdFor(adUnitId) != null
 
 
     /**
@@ -415,8 +472,14 @@ class NativeAd(
                 adView.visibility = View.GONE
                 adView.removeAllViews()
                 adView.destroy()
-                loadedNativeAd?.destroy()
-                loadedNativeAd = null
+                // Close the ad the user dismissed - which is this view's ad, not whatever happens
+                // to be sitting in the preload cache for another placement.
+                nativeAd.destroy()
+                adsByFrame.entries.removeAll { it.value === nativeAd }
+                if (loadedNativeAd === nativeAd) {
+                    loadedNativeAd = null
+                    loadedNativeAdUnitId = null
+                }
             }
 
             setNativeAd(nativeAd)

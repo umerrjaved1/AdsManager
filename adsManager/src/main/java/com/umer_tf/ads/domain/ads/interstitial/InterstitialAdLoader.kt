@@ -56,7 +56,10 @@ class InterstitialAdLoader(
         onSuccessListener: OnSuccessListener<Boolean>?
     ) {
         AdUnitIdValidator.validateAdUnitId(adUnitId)
-        if (interstitialAd != null) {
+        // The cached ad only satisfies this call when it belongs to the same unit. Reporting
+        // success for another unit's ad meant showAd() then displayed that one instead, with the
+        // impression and revenue landing on the wrong ad unit.
+        if (interstitialAd != null && interstitialAd?.adUnitId == adUnitId) {
             onSuccessListener?.onSuccess(true)
             return
         }
@@ -130,6 +133,10 @@ class InterstitialAdLoader(
     }
 
     override fun isAdLoaded(): Boolean = interstitialAd != null
+
+    /** True when the cached interstitial belongs to exactly [adUnitId]. */
+    fun isAdLoaded(adUnitId: String): Boolean =
+        interstitialAd != null && interstitialAd?.adUnitId == adUnitId
 
     @MainThread
     override fun showAd(
@@ -234,7 +241,7 @@ class InterstitialAdLoader(
 
             if (interstitialAd != null) {
                 if (!activity.isFinishing) {
-                    if (showDialog) loadingDialogUtil?.showLoadingDialog()
+                    if (showDialog) { loadingDialogUtil?.showLoadingDialog() }
                     interstitialAd?.fullScreenContentCallback =
                         object : FullScreenContentCallback() {
                             override fun onAdDismissedFullScreenContent() {
