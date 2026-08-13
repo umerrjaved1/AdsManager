@@ -1,5 +1,6 @@
 package com.umer_tf.ads.domain.core
 
+import android.app.Activity
 import android.app.Application
 import android.util.Log
 import com.google.android.gms.ads.MobileAds
@@ -173,6 +174,41 @@ open class AdMobManager(
      */
     fun setSplash(isSplash: Boolean): AdMobManager {
         adController.isSplash = isSplash
+        return this
+    }
+
+    /**
+     * Replaces the list of activities where app-open ads must not be shown.
+     * Subclasses of each listed class are also excluded. AdMob's own [com.google.android.gms.ads.AdActivity]
+     * is always excluded regardless of this list.
+     *
+     * @param activities Activity classes to exclude.
+     * @return The current instance of AdMobManager.
+     */
+    fun setOpenAdExcludedActivities(vararg activities: Class<out Activity>): AdMobManager {
+        adController.openAdExcludedActivities.clear()
+        adController.openAdExcludedActivities.addAll(activities)
+        return this
+    }
+
+    /**
+     * Adds a single activity class to the app-open exclusion list.
+     *
+     * @param activity Activity class (and its subclasses) to exclude.
+     * @return The current instance of AdMobManager.
+     */
+    fun addOpenAdExcludedActivity(activity: Class<out Activity>): AdMobManager {
+        adController.openAdExcludedActivities.add(activity)
+        return this
+    }
+
+    /**
+     * Clears all host-configured app-open activity exclusions.
+     *
+     * @return The current instance of AdMobManager.
+     */
+    fun clearOpenAdExcludedActivities(): AdMobManager {
+        adController.openAdExcludedActivities.clear()
         return this
     }
 

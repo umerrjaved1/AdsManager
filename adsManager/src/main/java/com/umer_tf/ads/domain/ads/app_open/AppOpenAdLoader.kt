@@ -130,11 +130,12 @@ class AppOpenAdLoader(
      * @param onShowAdCompleteListener Callback to notify when ad display completes
      */
     override fun showResumeAdIfAvailable(onShowAdCompleteListener: OnSuccessListener<Boolean>) {
-        if (isShowingAd) {
+        val activity = currentActivity
+        if (isShowingAd || activity == null || isOpenAdExcluded(activity)) {
             onShowAdCompleteListener.onSuccess(false)
             return
         }
-        resumeAdManager.showAd(currentActivity, onShowAdCompleteListener) { isShowing ->
+        resumeAdManager.showAd(activity, onShowAdCompleteListener) { isShowing ->
             isShowingAd = isShowing
         }
     }
@@ -148,11 +149,12 @@ class AppOpenAdLoader(
      * @param onShowAdCompleteListener Callback to notify when ad display completes
      */
     override fun showAppOpenAdIfAvailable(onShowAdCompleteListener: OnSuccessListener<Boolean>) {
-        if (isShowingAd) {
+        val activity = currentActivity
+        if (isShowingAd || activity == null || isOpenAdExcluded(activity)) {
             onShowAdCompleteListener.onSuccess(false)
             return
         }
-        startAdManager.showAd(currentActivity, onShowAdCompleteListener) { isShowing ->
+        startAdManager.showAd(activity, onShowAdCompleteListener) { isShowing ->
             isShowingAd = isShowing
         }
     }
@@ -204,7 +206,24 @@ class AppOpenAdLoader(
      * @return true if resume ad should be shown, false otherwise
      */
     private fun shouldShowResumeAd(activity: Activity): Boolean {
-        return activity.javaClass.simpleName != AdActivity::class.java.simpleName && !adController.isSplash
+        return !adController.isSplash && !isOpenAdExcluded(activity)
+    }
+
+    /**
+     * Returns true when [activity] must not host an app-open ad.
+     * Always excludes AdMob's [AdActivity]; also honors host-configured exclusions.
+     */
+    private fun isOpenAdExcluded(activity: Activity): Boolean {
+        if (AdActivity::class.java.isAssignableFrom(activity.javaClass)) {
+            return true
+        }
+        val excluded = adController.openAdExcludedActivities.any {
+            it.isAssignableFrom(activity.javaClass)
+        }
+        if (excluded) {
+            Log.d(TAG, "Monetization :- OpenAd - excluded for ${activity.javaClass.simpleName}")
+        }
+        return excluded
     }
 
     /**

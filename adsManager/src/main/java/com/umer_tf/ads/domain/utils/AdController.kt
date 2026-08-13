@@ -1,5 +1,7 @@
 package com.umer_tf.ads.domain.utils
 
+import android.app.Activity
+
 class AdController {
     @JvmField
     var openAdResumeTime: Long = 5
@@ -27,4 +29,11 @@ class AdController {
 
     @JvmField
     var isSplash: Boolean = false
+
+    /**
+     * Activity classes (and subclasses) on which app-open ads must not be shown.
+     * [com.google.android.gms.ads.AdActivity] is always excluded separately.
+     */
+    @JvmField
+    val openAdExcludedActivities: MutableSet<Class<out Activity>> = mutableSetOf()
 }
