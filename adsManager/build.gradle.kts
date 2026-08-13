@@ -76,7 +76,7 @@ afterEvaluate {
                 from(components.getByName("release"))
                 groupId = "com.umer_tf.ads"
                 artifactId = "ads"
-                version = "1.0.7"
+                version = "1.0.9"
             }
         }
         repositories {

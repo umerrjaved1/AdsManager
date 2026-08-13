@@ -234,7 +234,7 @@ class InterstitialAdLoader(
 
             if (interstitialAd != null) {
                 if (!activity.isFinishing) {
-                    loadingDialogUtil?.showLoadingDialog()
+                    if (showDialog) loadingDialogUtil?.showLoadingDialog()
                     interstitialAd?.fullScreenContentCallback =
                         object : FullScreenContentCallback() {
                             override fun onAdDismissedFullScreenContent() {
