@@ -226,7 +226,9 @@ class InterstitialAdLoader(
         job = coroutineScope.launch {
             delay(timeOut)
             if (settled) return@launch
-            emit(adUnitId, AdEvent.LOAD_FAILURE, stateOf(adUnitId), "caller timeout after ${timeOut}ms")
+            // The caller's wait ended; the request is still running and a late fill is kept.
+            // Emitting LOAD_FAILURE here made a timeout look like a no-fill in diagnostics.
+            Log.d(TAG, "Monetization :- caller timeout after ${timeOut}ms for $adUnitId — request continues")
             once.onSuccess(false)
         }
     }

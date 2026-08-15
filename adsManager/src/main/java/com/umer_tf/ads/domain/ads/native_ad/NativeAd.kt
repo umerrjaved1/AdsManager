@@ -176,17 +176,9 @@ class NativeAd(
             return
         }
 
-        // A request for this unit is already running. Joining it is the whole point: two AdMob
-        // requests can only ever produce one impression, so the second is a matched ad nobody
-        // will ever see. The join is deliberately not optional - the host flag that used to skip
-        // it is how one app ended up paying for two Language natives per display.
-        if (inFlight.contains(adUnitId)) {
-            parkUntilRequestSettles(adUnitId, builder, activity, onSuccessListener)
-            return
-        }
-
-        // Use a preloaded ad only when it was loaded for THIS unit, and consume it so the next
-        // placement loads its own instead of re-rendering this one.
+        // Consume a same-unit preload even while that request is still marked in-flight.
+        // forNativeAd caches the object before onAdLoaded clears inFlight, so checking join
+        // first parked on a fill that was already READY and then skipped it.
         consumeCachedAd(adUnitId)?.let { cached ->
             Log.d(TAG, "Monetization :- loadAndShow using preloaded ad for $adUnitId")
             emit(adUnitId, AdEvent.REQUEST_SKIPPED_CACHED)
@@ -197,6 +189,15 @@ class NativeAd(
             // preloaded ad displayed through loadAndShow earned money that never reached analytics.
             attachPaidEventListener(cached, adUnitId)
             onSuccessListener?.onSuccess(true)
+            return
+        }
+
+        // A request for this unit is already running. Joining it is the whole point: two AdMob
+        // requests can only ever produce one impression, so the second is a matched ad nobody
+        // will ever see. The join is deliberately not optional - the host flag that used to skip
+        // it is how one app ended up paying for two Language natives per display.
+        if (inFlight.contains(adUnitId)) {
+            parkUntilRequestSettles(adUnitId, builder, activity, onSuccessListener)
             return
         }
 
@@ -292,9 +293,18 @@ class NativeAd(
         inFlight.add(adUnitId)
         emit(adUnitId, AdEvent.REQUEST_STARTED)
 
+        var cachedBecauseActivityDied = false
         val adBuilder = AdLoader.Builder(context, adUnitId)
         // OnLoadedListener implementation.
         adBuilder.forNativeAd { nativeAd ->
+            // Language (and other short-lived screens) can finish in 1–3s. Binding into a
+            // dying view produces a match with no impression; keep the fill for the next screen.
+            if (activity.isFinishing || activity.isDestroyed) {
+                Log.d(TAG, "Monetization :- loadAndShow fill after Activity died — caching $adUnitId")
+                putInCache(adUnitId, nativeAd)
+                cachedBecauseActivityDied = true
+                return@forNativeAd
+            }
             bindToFrame(nativeAd, builder)
             attachPaidEventListener(nativeAd, adUnitId)
         }
@@ -338,8 +348,14 @@ class NativeAd(
                 emit(adUnitId, AdEvent.LOAD_SUCCESS)
                 builder.shimmerFrameLayout?.stopShimmer()
                 builder.shimmerFrameLayout?.visibility = View.GONE
-                onSuccessListener?.onSuccess(true)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
+                if (cachedBecauseActivityDied) {
+                    emit(adUnitId, AdEvent.READY)
+                    onSuccessListener?.onSuccess(false)
+                    settleWaiters(adUnitId, cachedAdFor(adUnitId))
+                    return
+                }
+                onSuccessListener?.onSuccess(true)
                 // This ad went into a frame, not the cache, so joiners get null and start their
                 // own request instead of rendering the same object into a second view.
                 settleWaiters(adUnitId, null)

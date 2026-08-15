@@ -58,15 +58,15 @@ internal abstract class AppOpenSlotManager(
     /**
      * Requests an ad unless one is cached or already in flight.
      *
-     * Note the callback contract, which surprised two of the three host apps: a `false` here does
-     * **not** mean no-fill. It also means "an ad is already available" or "a request is already
-     * running". Callers deciding whether to show something must ask [isAdAvailable], never infer
-     * it from this result.
+     * Note the callback contract: `true` means an ad is ready (just loaded **or** already
+     * cached). `false` means no-fill, premium/offline, or a join that has not settled yet.
+     * Callers that only want to know whether something is cached should still ask
+     * [isAdAvailable]; do not treat `false` as "definitely empty" while a request is in flight.
      */
     fun loadAd(context: Context, onSuccessListener: OnSuccessListener<Boolean>?) {
         if (isAdAvailable()) {
             emit(AdEvent.REQUEST_SKIPPED_CACHED)
-            onSuccessListener?.onSuccess(false)
+            onSuccessListener?.onSuccess(true)
             return
         }
         if (state.isLoading) {
