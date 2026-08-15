@@ -428,8 +428,12 @@ class InterstitialAdLoader(
             loadingDialogUtil?.destroy()
             loadingDialogUtil = LoadingDialogUtil.create(activity)
 
+            // Terminal for this flow: hide the dialog and drop it. Holding the util (and through
+            // it a Dialog built on this Activity) in a singleton field until some future
+            // loadAndShowAd call is what kept destroyed Activities alive.
             val hideDialog = {
-                if (!activity.isFinishing) loadingDialogUtil?.hideLoadingDialog()
+                loadingDialogUtil?.destroy()
+                loadingDialogUtil = null
                 Unit
             }
 

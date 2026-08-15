@@ -49,12 +49,18 @@ class LoadingDialogUtil private constructor(private val contextRef: WeakReferenc
 
     fun hideLoadingDialog() {
         try {
-            if (loadingDialog != null && loadingDialog?.isShowing == true) {
-                loadingDialog?.dismiss()
-                loadingDialog = null
-            }
+            loadingDialog?.takeIf { it.isShowing }?.dismiss()
         } catch (e: Exception) {
             Log.e(TAG, "hideLoadingDialog:", e)
+        } finally {
+            // Always drop the reference, not only when the dialog happened to still be showing.
+            //
+            // A Dialog holds its Activity context strongly, and this object is retained by the
+            // interstitial loader - a process singleton - until the next loadAndShowAd() call.
+            // Whenever the Activity went away before the dialog was dismissed, isShowing was
+            // already false, the old code skipped the assignment, and the destroyed Activity
+            // stayed reachable from the singleton for the rest of the session.
+            loadingDialog = null
         }
     }
 

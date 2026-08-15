@@ -62,17 +62,22 @@ object ForegroundActivityTracker : Application.ActivityLifecycleCallbacks {
     fun isForeground(): Boolean = startedCount > 0
 
     /**
-     * The Activity a full-screen ad may be shown on, or null.
+     * The Activity a full-screen ad may be shown on, or null when every Activity has been
+     * destroyed.
      *
-     * Deliberately requires STARTED rather than RESUMED: an app-open ad on return from background
-     * is shown from the `ON_START` dispatch, at which point the Activity is started but not yet
-     * resumed. Demanding RESUMED here would reintroduce the very miss this class exists to fix.
+     * Deliberately does **not** consult [isForeground]. This tracker is registered from
+     * `Application.onCreate`, whereas `ProcessLifecycleOwner`'s callbacks come from a
+     * ContentProvider that runs earlier - so at the moment a host's `ON_START` observer asks this
+     * question, [startedCount] may not have been incremented yet. Gating on it would return null
+     * during exactly the resume this class exists to make work, which is the original bug wearing
+     * a different hat.
+     *
+     * Foreground-ness is the caller's business: a host asking from an `ON_START` observer is by
+     * definition foregrounding, and one asking from `ON_STOP` wants the last known screen so it
+     * can preload for the next resume. Both get a usable answer.
      */
     @JvmStatic
-    fun showableActivity(): Activity? {
-        if (!isForeground()) return null
-        return resumed() ?: current()
-    }
+    fun showableActivity(): Activity? = resumed() ?: current()
 
     private fun Activity.isUsable(): Boolean = !isFinishing && !isDestroyed
 
