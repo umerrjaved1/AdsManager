@@ -27,6 +27,12 @@ open class AdMobManager(
 ) {
     private val adController = AdController()
 
+    init {
+        // Registered here rather than lazily with the app-open loader so the reference is valid
+        // even for hosts that never touch app-open ads.
+        ForegroundActivityTracker.install(application)
+    }
+
     @JvmField
     val appOpenAdLoader = AppOpenAdLoader(application, adController)
 
@@ -211,6 +217,23 @@ open class AdMobManager(
         adController.openAdExcludedActivities.clear()
         return this
     }
+
+    /**
+     * The Activity a full-screen ad may be shown on right now, or null when the app has no usable
+     * foreground Activity.
+     *
+     * Hosts should use this instead of keeping their own `currentActivity` field. A host-side
+     * tracker that clears on `onActivityStopped` reads `null` from a `ProcessLifecycleOwner`
+     * `ON_START` observer, because that observer runs before the host's own lifecycle callbacks -
+     * which is how resume app-open ads ended up never being shown.
+     */
+    fun foregroundActivity(): Activity? = ForegroundActivityTracker.showableActivity()
+
+    /** True while the process has at least one started Activity. */
+    fun isAppInForeground(): Boolean = ForegroundActivityTracker.isForeground()
+
+    /** True while any full-screen ad (interstitial, app-open, rewarded) owns the screen. */
+    fun isFullScreenAdShowing(): Boolean = FullScreenGate.isShowing()
 
     companion object {
         private const val TAG = "AdMobManager"

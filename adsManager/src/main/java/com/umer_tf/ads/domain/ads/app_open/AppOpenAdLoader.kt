@@ -10,6 +10,10 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.android.gms.ads.AdActivity
 import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.core.AdMobManager
+import com.umer_tf.ads.domain.core.AdSlotState
+import com.umer_tf.ads.domain.diagnostics.AdEvent
+import com.umer_tf.ads.domain.diagnostics.AdEventLog
+import com.umer_tf.ads.domain.diagnostics.AdFormat
 import com.umer_tf.ads.domain.utils.AdController
 
 /**
@@ -132,6 +136,12 @@ class AppOpenAdLoader(
     override fun showResumeAdIfAvailable(onShowAdCompleteListener: OnSuccessListener<Boolean>) {
         val activity = currentActivity
         if (isShowingAd || activity == null || isOpenAdExcluded(activity)) {
+            logShowRefusal(
+                AdFormat.APP_OPEN_RESUME,
+                adController.appOpenAdResumeId,
+                activity,
+                resumeAdManager.state,
+            )
             onShowAdCompleteListener.onSuccess(false)
             return
         }
@@ -151,6 +161,12 @@ class AppOpenAdLoader(
     override fun showAppOpenAdIfAvailable(onShowAdCompleteListener: OnSuccessListener<Boolean>) {
         val activity = currentActivity
         if (isShowingAd || activity == null || isOpenAdExcluded(activity)) {
+            logShowRefusal(
+                AdFormat.APP_OPEN_START,
+                adController.appOpenAdStartId,
+                activity,
+                startAdManager.state,
+            )
             onShowAdCompleteListener.onSuccess(false)
             return
         }
@@ -158,6 +174,39 @@ class AppOpenAdLoader(
             isShowingAd = isShowing
         }
     }
+
+    /**
+     * Records why a show never reached the slot manager. Without this the three refusals that
+     * happen before the ad is even consulted - already showing, no usable Activity, excluded
+     * screen - were indistinguishable from a plain no-fill in the reports.
+     */
+    private fun logShowRefusal(
+        format: AdFormat,
+        adUnitId: String,
+        activity: Activity?,
+        state: AdSlotState,
+    ) {
+        val event = if (isShowingAd) {
+            AdEvent.SHOW_REJECTED_ALREADY_SHOWING
+        } else {
+            AdEvent.SHOW_REJECTED_INVALID_ACTIVITY
+        }
+        val reason = when {
+            isShowingAd -> "another app-open ad is showing"
+            activity == null -> "no usable foreground Activity"
+            else -> "excluded screen ${activity.javaClass.simpleName}"
+        }
+        AdEventLog.emit(format, adUnitId, event, state, reason)
+    }
+
+    /** True when an unexpired resume ad is cached. */
+    fun isResumeAdAvailable(): Boolean = resumeAdManager.isAdAvailable()
+
+    /** Current state of the cold-start slot, for diagnostics. */
+    fun startAdState(): AdSlotState = startAdManager.state
+
+    /** Current state of the resume slot, for diagnostics. */
+    fun resumeAdState(): AdSlotState = resumeAdManager.state
 
     /**
      * Destroys all ads and resets the loader state.
