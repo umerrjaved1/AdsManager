@@ -346,8 +346,22 @@ class InterstitialAdLoader(
             }
         }
 
-        ad.show(activity)
-        return true
+        // If show() throws, no FullScreenContentCallback will ever fire, so nothing else would
+        // release the gate. The stale-holder watchdog would eventually recover it, but only after
+        // five minutes of every full-screen ad in the app being refused.
+        return try {
+            ad.show(activity)
+            true
+        } catch (t: Throwable) {
+            Log.e(TAG, "Monetization :- show() threw for $adUnitId", t)
+            releaseGate()
+            slot.ad = null
+            slot.state = AdSlotState.IDLE
+            slot.loadedAtElapsed = 0L
+            emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, "show() threw: ${t.javaClass.simpleName}")
+            onSuccessListener?.onSuccess(false)
+            false
+        }
     }
 
     @MainThread

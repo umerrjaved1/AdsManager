@@ -181,35 +181,7 @@ class NativeAd(
         // will ever see. The join is deliberately not optional - the host flag that used to skip
         // it is how one app ended up paying for two Language natives per display.
         if (inFlight.contains(adUnitId)) {
-            Log.d(TAG, "Monetization :- loadAndShow joining in-flight request for $adUnitId")
-            emit(adUnitId, AdEvent.REQUEST_JOINED)
-            builder.frameLayout?.visibility = View.GONE
-            builder.shimmerFrameLayout?.startShimmer()
-            builder.shimmerFrameLayout?.visibility = View.VISIBLE
-            waiters.getOrPut(adUnitId) { mutableListOf() }.add { joined ->
-                if (activity.isFinishing || activity.isDestroyed) {
-                    builder.shimmerFrameLayout?.stopShimmer()
-                    builder.shimmerFrameLayout?.visibility = View.GONE
-                    onSuccessListener?.onSuccess(false)
-                    return@add
-                }
-                // Claim the ad by consuming it, rather than trusting the handed-out reference.
-                // Waiters are settled in sequence, so with several screens joined to one preload
-                // only the first consume succeeds; without this they would all render the same
-                // NativeAd object into different frames.
-                val mine = if (joined != null) consumeCachedAd(adUnitId) else null
-                if (mine != null) {
-                    builder.shimmerFrameLayout?.stopShimmer()
-                    builder.shimmerFrameLayout?.visibility = View.GONE
-                    bindToFrame(mine, builder)
-                    attachPaidEventListener(mine, adUnitId)
-                    onSuccessListener?.onSuccess(true)
-                } else {
-                    // Either the joined request rendered into someone else's frame, or another
-                    // waiter claimed the preload first. Request our own instead of double-binding.
-                    startLoadAndShow(adUnitId, builder, activity, onSuccessListener)
-                }
-            }
+            parkUntilRequestSettles(adUnitId, builder, activity, onSuccessListener)
             return
         }
 
@@ -229,6 +201,60 @@ class NativeAd(
         }
 
         startLoadAndShow(adUnitId, builder, activity, onSuccessListener)
+    }
+
+    /**
+     * Waits for the in-flight request on [adUnitId] instead of firing a duplicate.
+     *
+     * When it settles, exactly one outcome applies:
+     *  - the request was a preload and this caller wins the race to consume it → render it;
+     *  - the ad went into someone else's frame, or another waiter claimed it → this caller needs
+     *    an ad of its own, because one [NativeAd] cannot be rendered into two views.
+     *
+     * In the second case it re-checks [inFlight] rather than requesting unconditionally. Waiters
+     * are settled in sequence, so the first one to reach here starts the next request and every
+     * other waiter parks on *that* one. Requesting directly meant N joined screens produced N
+     * simultaneous requests - the exact duplication this join exists to prevent, just deferred by
+     * one round trip.
+     */
+    @MainThread
+    private fun parkUntilRequestSettles(
+        adUnitId: String,
+        builder: NativeAdBuilder,
+        activity: Activity,
+        onSuccessListener: OnSuccessListener<Boolean>?
+    ) {
+        Log.d(TAG, "Monetization :- loadAndShow joining in-flight request for $adUnitId")
+        emit(adUnitId, AdEvent.REQUEST_JOINED)
+        builder.frameLayout?.visibility = View.GONE
+        builder.shimmerFrameLayout?.startShimmer()
+        builder.shimmerFrameLayout?.visibility = View.VISIBLE
+
+        waiters.getOrPut(adUnitId) { mutableListOf() }.add { joined ->
+            if (activity.isFinishing || activity.isDestroyed) {
+                builder.shimmerFrameLayout?.stopShimmer()
+                builder.shimmerFrameLayout?.visibility = View.GONE
+                onSuccessListener?.onSuccess(false)
+                return@add
+            }
+            // Claim by consuming rather than trusting the handed-out reference: only the first
+            // waiter can win, so the rest never render the same object into a second frame.
+            val mine = if (joined != null) consumeCachedAd(adUnitId) else null
+            when {
+                mine != null -> {
+                    builder.shimmerFrameLayout?.stopShimmer()
+                    builder.shimmerFrameLayout?.visibility = View.GONE
+                    bindToFrame(mine, builder)
+                    attachPaidEventListener(mine, adUnitId)
+                    onSuccessListener?.onSuccess(true)
+                }
+                // Another waiter already started the next request — queue behind it.
+                inFlight.contains(adUnitId) ->
+                    parkUntilRequestSettles(adUnitId, builder, activity, onSuccessListener)
+
+                else -> startLoadAndShow(adUnitId, builder, activity, onSuccessListener)
+            }
+        }
     }
 
     /** Reports this ad's revenue to AppsFlyer under [adUnitId]. */

@@ -205,7 +205,19 @@ internal abstract class AppOpenSlotManager(
         }
 
         onStateChange(true)
-        ad.show(activity)
+        try {
+            ad.show(activity)
+        } catch (t: Throwable) {
+            // No callback will fire, so nothing else releases the gate or the showing flag.
+            Log.e(tag, "Monetization :- $gateOwner show() threw", t)
+            releaseGate()
+            appOpenAd = null
+            loadTimeElapsed = 0L
+            state = AdSlotState.IDLE
+            onStateChange(false)
+            emit(AdEvent.SHOW_FAILED, "show() threw: ${t.javaClass.simpleName}")
+            onShowAdCompleteListener.onSuccess(false)
+        }
     }
 
     /** True when an unexpired ad is cached and ready to display. */
