@@ -47,6 +47,12 @@ enum class AdEvent {
     SHOW_REJECTED_NOT_READY,
     SHOW_REJECTED_INVALID_ACTIVITY,
     SHOW_REJECTED_ALREADY_SHOWING,
+    /**
+     * The host had a cached ad and chose not to show it — a cooldown, a frequency cap, an
+     * excluded screen. Emit it *only* when an ad was actually in hand: skipping with an empty
+     * cache costs nothing and would drown the real losses in noise.
+     */
+    SHOW_SKIPPED_BY_RULE,
     SHOW_STARTED,
     SHOW_FAILED,
     DISMISSED,
@@ -70,6 +76,7 @@ enum class AdEvent {
             SHOW_REJECTED_NOT_READY -> "NOT SHOWN"
             SHOW_REJECTED_INVALID_ACTIVITY -> "NOT SHOWN"
             SHOW_REJECTED_ALREADY_SHOWING -> "NOT SHOWN"
+            SHOW_SKIPPED_BY_RULE -> "NOT SHOWN"
             SHOW_STARTED -> "SHOWING"
             SHOW_FAILED -> "SHOW FAILED"
             DISMISSED -> "dismissed"
@@ -94,6 +101,7 @@ enum class AdEvent {
         get() = this == SHOW_REJECTED_NOT_READY ||
             this == SHOW_REJECTED_INVALID_ACTIVITY ||
             this == SHOW_REJECTED_ALREADY_SHOWING ||
+            this == SHOW_SKIPPED_BY_RULE ||
             this == SHOW_FAILED ||
             this == AD_EXPIRED ||
             this == AD_DESTROYED
@@ -135,6 +143,16 @@ object AdEventLog {
 
     /** Host-supplied unit id → placement name, so logs read "splash" rather than "…5399236686". */
     private val placementNames = ConcurrentHashMap<String, String>()
+
+    /**
+     * Placement that currently owns a unit's slot — see [markPlacement].
+     *
+     * [placementNames] cannot do this job on its own: several placements normally resolve to one
+     * ad unit (the feature-click, 25s-timer and function-complete interstitials are all the same
+     * `homeInter` unit), so registering a name per placement means the last one silently wins and
+     * every line for that unit claims to be that placement.
+     */
+    private val activePlacement = ConcurrentHashMap<String, String>()
 
     /** When the in-flight request for a unit started, so a fill can report how long it took. */
     private val requestStartedAt = ConcurrentHashMap<String, Long>()
@@ -178,6 +196,20 @@ object AdEventLog {
      * belongs to — the single biggest obstacle to reading these logs. Call it once at startup
      * with whatever the host's AdIds resolve to.
      */
+    /**
+     * Records which placement is about to use [adUnitId], so its events are labelled with the
+     * placement rather than with whichever name happened to be registered last for that unit.
+     *
+     * Call it immediately before requesting and again immediately before showing: a preload
+     * started by one placement is often shown by another, and both halves should say so. Safe to
+     * call repeatedly — a unit has one slot, so only one placement can own it at a time.
+     */
+    @JvmStatic
+    fun markPlacement(adUnitId: String, placement: String) {
+        if (adUnitId.isBlank() || placement.isBlank()) return
+        activePlacement[adUnitId] = placement
+    }
+
     @JvmStatic
     fun namePlacements(names: Map<String, String>) {
         names.forEach { (unitId, name) ->
@@ -254,7 +286,7 @@ object AdEventLog {
 
         val word = when (event) {
             AdEvent.REQUEST_STARTED -> "request"
-            AdEvent.REQUEST_JOINED, AdEvent.REQUEST_SKIPPED_CACHED -> "load-join,cache"
+            AdEvent.REQUEST_JOINED, AdEvent.REQUEST_SKIPPED_CACHED -> "load"
             AdEvent.LOAD_SUCCESS, AdEvent.READY -> {
                 // One `loaded` per fill, whichever of the two events arrives first.
                 if (loadedLogged.putIfAbsent(key, true) != null) return
@@ -265,6 +297,7 @@ object AdEventLog {
             AdEvent.SHOW_REJECTED_NOT_READY,
             AdEvent.SHOW_REJECTED_INVALID_ACTIVITY,
             AdEvent.SHOW_REJECTED_ALREADY_SHOWING,
+            AdEvent.SHOW_SKIPPED_BY_RULE,
             AdEvent.SHOW_FAILED,
             AdEvent.AD_EXPIRED,
             AdEvent.AD_DESTROYED -> "fail"
@@ -315,6 +348,7 @@ object AdEventLog {
 
     /** Placement name when the host registered one, else the last 4 digits of the unit. */
     private fun placementLabel(adUnitId: String): String {
+        activePlacement[adUnitId]?.let { return it }
         placementNames[adUnitId]?.let { return it }
         val digits = adUnitId.filter { it.isDigit() }
         return if (digits.length >= 4) "unit-${digits.takeLast(4)}" else "unknown"
@@ -368,25 +402,24 @@ object AdEventLog {
         Log.d(TAG, "Monetization :- ======== AD FUNNEL (this session) ========")
         AdFormat.values().forEach { format ->
             val requested = n(format, AdEvent.REQUEST_STARTED)
-            // Interstitial and app-open emit LOAD_SUCCESS and READY for the same fill, so taking
-            // the larger avoids counting it twice. Native emits one or the other depending on
-            // which path ran (preload vs load-and-show), so those add up.
-            val loadSuccess = n(format, AdEvent.LOAD_SUCCESS)
-            val readyCount = n(format, AdEvent.READY)
-            val filled = if (format == AdFormat.NATIVE) {
-                loadSuccess + readyCount
-            } else {
-                maxOf(loadSuccess, readyCount)
-            }
+            // Every fill path emits LOAD_SUCCESS exactly once, so this is a straight count.
+            // It used to be derived from LOAD_SUCCESS and READY together, which double-counted
+            // the formats that emit both for one fill.
+            val filled = n(format, AdEvent.LOAD_SUCCESS)
+            val noFill = n(format, AdEvent.LOAD_FAILURE)
             val shown = n(format, AdEvent.SHOW_STARTED)
             val saved = n(format, AdEvent.REQUEST_JOINED) +
                 n(format, AdEvent.REQUEST_SKIPPED_CACHED)
             val lost = lossEvents.sumOf { n(format, it) }
+            // Matched ads that neither reached the screen nor hit a named loss. Some are simply
+            // still in cache and will show later; the rest are the silent losses that used to
+            // report as LOST 0 while `filled` sat well above `shown` on the same line.
+            val unshown = (filled - shown - lost).coerceAtLeast(0)
             if (requested == 0 && filled == 0 && shown == 0 && saved == 0) return@forEach
             Log.d(
                 TAG,
-                "Monetization :- ${format.short}  req $requested   filled $filled   " +
-                    "shown $shown   LOST $lost   saved $saved"
+                "Monetization :- ${format.short}  req $requested   fill $filled   " +
+                    "shown $shown   nofill $noFill   LOST $lost   UNSHOWN $unshown   saved $saved"
             )
         }
         val anyLoss = AdFormat.values().any { f -> lossEvents.any { n(f, it) > 0 } }

@@ -441,6 +441,10 @@ class NativeAd(
                 super.onAdLoaded()
                 Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob ${activity.javaClass.simpleName}")
                 inFlight.remove(adUnitId)
+                // LOAD_SUCCESS is what the funnel counts as a fill. Emitting only READY here
+                // meant preloaded natives were invisible to it, so `filled` had to be derived
+                // by summing two events - which double-counted every path that emits both.
+                emit(adUnitId, AdEvent.LOAD_SUCCESS)
                 emit(adUnitId, AdEvent.READY)
                 context.showToast("Native ad loaded")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
@@ -450,6 +454,10 @@ class NativeAd(
 
             override fun onAdImpression() {
                 super.onAdImpression()
+                // Without this the preload path recorded no impression at all, so a unit that
+                // was preloaded and then rendered reported `filled N shown 0` however well it
+                // was actually performing.
+                emit(adUnitId, AdEvent.SHOW_STARTED)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd" )
             }
         }).build()
@@ -677,6 +685,9 @@ class NativeAd(
         }
 
         context.showToast("Loading exit native ad")
+        // This path used to emit nothing at all, so exit natives were spent without appearing
+        // anywhere in the funnel - the one placement most likely to match and never render.
+        emit(adUnitId, AdEvent.REQUEST_STARTED)
         val adBuilder = AdLoader.Builder(context, adUnitId)
         adBuilder.forNativeAd { nativeAd ->
             exitNativeAd = nativeAd
@@ -697,6 +708,7 @@ class NativeAd(
                 super.onAdFailedToLoad(loadAdError)
                 Log.d("ExitNative", "Monetization :- onExitNativeAdFailedToLoad() " + loadAdError.message)
                 context.showToast("Failed to load exit native ad")
+                emit(adUnitId, AdEvent.LOAD_FAILURE, loadAdError.message)
                 onSuccessListener?.onSuccess(false, null)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "ExitNative")
             }
@@ -705,11 +717,13 @@ class NativeAd(
                 super.onAdLoaded()
                 Log.d("ExitNative", "Monetization :- onExitNativeLoaded: Admob")
                 context.showToast("Exit native ad loaded")
+                emit(adUnitId, AdEvent.LOAD_SUCCESS)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "ExitNative")
             }
 
             override fun onAdImpression() {
                 super.onAdImpression()
+                emit(adUnitId, AdEvent.SHOW_STARTED)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "ExitNative")
             }
         }).build()
