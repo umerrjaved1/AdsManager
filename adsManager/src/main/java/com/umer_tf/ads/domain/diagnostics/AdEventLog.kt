@@ -254,7 +254,7 @@ object AdEventLog {
 
         val word = when (event) {
             AdEvent.REQUEST_STARTED -> "request"
-            AdEvent.REQUEST_JOINED, AdEvent.REQUEST_SKIPPED_CACHED -> "load"
+            AdEvent.REQUEST_JOINED, AdEvent.REQUEST_SKIPPED_CACHED -> "load-join,cache"
             AdEvent.LOAD_SUCCESS, AdEvent.READY -> {
                 // One `loaded` per fill, whichever of the two events arrives first.
                 if (loadedLogged.putIfAbsent(key, true) != null) return
@@ -282,9 +282,11 @@ object AdEventLog {
             append(word.padEnd(8))
             append(format.short)
             append("  ")
-            append(placementLabel(adUnitId))
+            append(placementLabel(adUnitId).padEnd(18).take(18))
+            // Full unit id, so a line can be matched against the AdMob console without a lookup.
+            append(adUnitId.ifBlank { "(no unit)" })
             note?.takeIf { it.isNotBlank() }?.let {
-                append("    ")
+                append("   ")
                 append(it)
             }
         }
@@ -300,11 +302,13 @@ object AdEventLog {
     ): String = buildString {
         append(format.short)
         append("  ")
-        append(placementLabel(adUnitId).padEnd(16).take(16))
+        append(placementLabel(adUnitId).padEnd(18).take(18))
         append(event.plain.padEnd(12))
+        // Full unit id, so a line can be matched against the AdMob console without a lookup.
+        append(adUnitId.ifBlank { "(no unit)" })
         val notes = listOfNotNull(loadDuration(format, adUnitId, event), event.why, reason)
         if (notes.isNotEmpty()) {
-            append("· ")
+            append("  · ")
             append(notes.joinToString(" · "))
         }
     }
