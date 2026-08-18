@@ -1,7 +1,10 @@
 package com.example.admobmanager
 
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -38,20 +41,31 @@ class MainActivity : AppCompatActivity() {
     private val bannerTestAdUnitId = "ca-app-pub-3940256099942544/6300978111"
     private val collapsibleBannerTestAdUnitId = "ca-app-pub-3940256099942544/2014213617"
 
-    /** Every bundled shape, as `layout code to container`. One FrameLayout per slot. */
+    /**
+     * Every bundled shape, as `layout code to container to label`. One FrameLayout per slot; the
+     * label above it reports that container's measured height so shape changes are visible without
+     * a layout inspector.
+     */
     private val nativeSlots = listOf(
-        "1a" to R.id.adContainer_1a,
-        "1b" to R.id.adContainer_1b,
-        "1c" to R.id.adContainer_1c,
-        "3a" to R.id.adContainer_3a,
-        "3b" to R.id.adContainer_3b,
-        "4a" to R.id.adContainer_4,
-        "5a" to R.id.adContainer_5a,
-        "6a" to R.id.adContainer_6a,
-        "6b" to R.id.adContainer_6b,
-        "7a" to R.id.adContainer_7a,
-        "7b" to R.id.adContainer_7b,
-        "7c" to R.id.adContainer_7c
+        NativeSlot("1a", R.id.adContainer_1a, R.id.label_1a, "Variant 1a"),
+        NativeSlot("1b", R.id.adContainer_1b, R.id.label_1b, "Variant 1b"),
+        NativeSlot("1c", R.id.adContainer_1c, R.id.label_1c, "Variant 1c"),
+        NativeSlot("3a", R.id.adContainer_3a, R.id.label_3a, "Variant 3a"),
+        NativeSlot("3b", R.id.adContainer_3b, R.id.label_3b, "Variant 3b"),
+        NativeSlot("4a", R.id.adContainer_4, R.id.label_4, "Variant 4"),
+        NativeSlot("5a", R.id.adContainer_5a, R.id.label_5a, "Variant 5a"),
+        NativeSlot("6a", R.id.adContainer_6a, R.id.label_6a, "Variant 6a"),
+        NativeSlot("6b", R.id.adContainer_6b, R.id.label_6b, "Variant 6b"),
+        NativeSlot("7a", R.id.adContainer_7a, R.id.label_7a, "Variant 7a"),
+        NativeSlot("7b", R.id.adContainer_7b, R.id.label_7b, "Variant 7b"),
+        NativeSlot("7c", R.id.adContainer_7c, R.id.label_7c, "Variant 7c")
+    )
+
+    private data class NativeSlot(
+        val layoutCode: String,
+        val containerId: Int,
+        val labelId: Int,
+        val title: String
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,12 +91,14 @@ class MainActivity : AppCompatActivity() {
         // The whole native integration: a shape code, an ad unit and one container. The shimmer is
         // inflated into that container and replaced by the ad. Each slot gets its own key (derived
         // from the container's view id), so the twelve shapes load and render independently.
-        nativeSlots.forEach { (layoutCode, containerId) ->
+        nativeSlots.forEach { slot ->
+            val container = findViewById<FrameLayout>(slot.containerId)
+            trackHeight(container, findViewById(slot.labelId), slot.title)
             ads.bindNativeAd(
                 owner = this,
                 adUnitId = nativeTestAdUnitId,
-                layout = layoutCode,
-                container = findViewById(containerId),
+                layout = slot.layoutCode,
+                container = container,
                 theme = theme
             )
         }
@@ -219,6 +235,28 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ads.resumeBanners()
+    }
+
+    /**
+     * Appends the container's live height to its label. The listener fires on every layout pass, so
+     * the number follows shimmer -> ad -> collapsed-on-failure without any polling; the guard keeps
+     * it from calling setText on passes where the height did not actually move.
+     */
+    private fun trackHeight(container: View, label: TextView, title: String) {
+        fun render(heightPx: Int) {
+            val dp = heightPx / resources.displayMetrics.density
+            label.text = "$title - ${heightPx}px (${"%.1f".format(dp)}dp)"
+        }
+
+        var lastHeight = container.height
+        render(lastHeight)
+        container.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            val height = bottom - top
+            if (height != lastHeight) {
+                lastHeight = height
+                render(height)
+            }
+        }
     }
 
     private fun toast(message: String) =

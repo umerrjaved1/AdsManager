@@ -1,30 +1,37 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+    Placeholder for layout_native_ad_small_1a.xml.
+
+    Structural clone of that layout: same container padding/minHeight, same ids, same constraints and
+    margins, and text blocks are TextViews carrying the real font, text size and line count, so the
+    placeholder measures to the same height as the ad that replaces it instead of jumping.
+-->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="144dp"
-    android:minHeight="144dp"
+    android:layout_height="wrap_content"
     app:shimmer_auto_start="true"
     app:shimmer_base_alpha="0.95"
     app:shimmer_duration="1200"
     app:shimmer_highlight_alpha="0.35">
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clAd"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="144dp"
         android:padding="12dp">
 
-        <!-- Shimmer Media View Box -->
         <androidx.cardview.widget.CardView
             android:id="@+id/ad_media_card"
             android:layout_width="120dp"
             android:layout_height="120dp"
-            app:cardCornerRadius="14dp"
-            app:cardElevation="0dp"
             app:cardBackgroundColor="@android:color/transparent"
+            app:cardCornerRadius="@dimen/ad_media_radius"
+            app:cardElevation="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent">
+            app:layout_constraintTop_toTopOf="parent">
 
             <View
                 android:layout_width="match_parent"
@@ -33,64 +40,61 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Shimmer Headline -->
-        <View
+        <TextView
             android:id="@+id/ad_headline"
             android:layout_width="0dp"
-            android:layout_height="18dp"
+            android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
+            android:fontFamily="@font/inter_semibold"
+            android:lines="1"
+            android:textSize="@dimen/ad_text_headline"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <!-- Shimmer AD Badge -->
-        <View
+        <TextView
             android:id="@+id/ad_badge"
-            android:layout_width="32dp"
-            android:layout_height="14dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:layout_marginTop="8dp"
             android:background="@drawable/adlibrary_shimmer_block"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="@string/ad"
+            android:textColor="@android:color/transparent"
+            android:textSize="@dimen/ad_text_badge"
+            android:textStyle="bold"
             app:layout_constraintStart_toEndOf="@id/ad_media_card"
-            app:layout_constraintTop_toBottomOf="@id/ad_headline" />
+            app:layout_constraintTop_toBottomOf="@id/ad_headline"
+            tools:ignore="SmallSp" />
 
-        <!-- Shimmer Body line 1 -->
-        <View
-            android:id="@+id/ad_body_line1"
+        <TextView
+            android:id="@+id/ad_body"
             android:layout_width="0dp"
-            android:layout_height="10dp"
+            android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:layout_marginTop="8dp"
             android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
+            android:fontFamily="@font/inter"
+            android:lines="2"
+            android:textSize="@dimen/ad_text_body"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_media_card"
             app:layout_constraintTop_toBottomOf="@id/ad_badge" />
 
-        <!-- Shimmer Body line 2 -->
-        <View
-            android:id="@+id/ad_body_line2"
-            android:layout_width="0dp"
-            android:layout_height="10dp"
-            android:layout_marginStart="14dp"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_body_line1" />
-
-        <!-- Shimmer CTA Button -->
         <View
             android:id="@+id/ad_call_to_action"
             android:layout_width="0dp"
-            android:layout_height="44dp"
+            android:layout_height="@dimen/ad_cta_height"
             android:layout_marginStart="14dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toEndOf="@id/ad_media_card"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_body_line2"
-            app:layout_constraintBottom_toBottomOf="parent" />
+            app:layout_constraintStart_toEndOf="@id/ad_media_card"
+            app:layout_constraintTop_toBottomOf="@id/ad_body" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

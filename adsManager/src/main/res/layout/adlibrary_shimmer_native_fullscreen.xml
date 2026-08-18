@@ -1,6 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+    Placeholder for admob_native_fullscreen.xml (media filling the screen above a bottom-anchored
+    detail block and a 40sdp CTA).
+
+    Structural clone of that layout: same 5sdp card margin, the same llDetails insets and padding, and
+    the CTA height from the same sdp dimen. The body mirrors the ad's font and size but reserves two
+    lines rather than its 5-line maximum - the block is bottom-anchored, so reserving five lines would
+    shrink the media area far below what most creatives use.
+-->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     app:shimmer_auto_start="true"
@@ -9,54 +18,85 @@
     app:shimmer_highlight_alpha="0.35">
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clAd"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:padding="16dp">
+        android:layout_margin="@dimen/_5sdp"
+        android:minHeight="50dp">
 
         <View
-            android:id="@+id/ad_media_card"
+            android:id="@+id/constraintLayoutMedia"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginBottom="16dp"
             android:background="@drawable/adlibrary_shimmer_block"
+            app:layout_constraintBottom_toTopOf="@+id/llDetails"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tvAd"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/_15sdp"
+            android:background="@drawable/adlibrary_shimmer_block"
+            android:gravity="center"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="2dp"
+            android:text="@string/ad"
+            android:textColor="@android:color/transparent"
+            android:textSize="@dimen/ad_text_badge"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toTopOf="@id/ad_headline" />
+            tools:ignore="SmallSp" />
 
-        <View
-            android:id="@+id/ad_headline"
-            android:layout_width="220dp"
-            android:layout_height="18dp"
-            android:layout_marginBottom="8dp"
-            android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintBottom_toTopOf="@id/ad_body_line1" />
-
-        <View
-            android:id="@+id/ad_body_line1"
+        <LinearLayout
+            android:id="@+id/llDetails"
             android:layout_width="match_parent"
-            android:layout_height="12dp"
-            android:layout_marginBottom="4dp"
-            android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintBottom_toTopOf="@id/ad_body_line2" />
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="@dimen/_10sdp"
+            android:layout_marginBottom="@dimen/_5sdp"
+            android:orientation="horizontal"
+            android:padding="@dimen/_10sdp"
+            app:layout_constraintBottom_toTopOf="@+id/ad_call_to_action">
 
-        <View
-            android:id="@+id/ad_body_line2"
-            android:layout_width="260dp"
-            android:layout_height="12dp"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintBottom_toTopOf="@id/ad_call_to_action" />
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp">
+
+                <TextView
+                    android:id="@+id/ad_headline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/adlibrary_shimmer_block"
+                    android:fontFamily="@font/inter_semibold"
+                    android:lines="1"
+                    android:paddingVertical="@dimen/_5sdp"
+                    android:textSize="@dimen/ad_text_headline"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/ad_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/adlibrary_shimmer_block"
+                    android:fontFamily="@font/inter"
+                    android:lines="2"
+                    android:textSize="@dimen/ad_text_body"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/ad_headline" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </LinearLayout>
 
         <View
             android:id="@+id/ad_call_to_action"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginHorizontal="@dimen/_10sdp"
+            android:layout_marginVertical="@dimen/_5sdp"
             android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintBottom_toBottomOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.facebook.shimmer.ShimmerFrameLayout>

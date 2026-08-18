@@ -1,6 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+    Placeholder for layout_native_ad_large_6b.xml (full-width 180dp media, icon + headline + badge
+    row, body, full-width CTA).
+
+    Structural clone of that layout, barrier included, with the 12dp top margins the ad gives the icon
+    and badge below the media.
+-->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     app:shimmer_auto_start="true"
@@ -9,6 +16,7 @@
     app:shimmer_highlight_alpha="0.35">
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clAd"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="12dp">
@@ -17,9 +25,9 @@
             android:id="@+id/ad_media_card"
             android:layout_width="0dp"
             android:layout_height="180dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp"
             app:cardBackgroundColor="@android:color/transparent"
+            app:cardCornerRadius="@dimen/ad_media_radius"
+            app:cardElevation="0dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
@@ -32,63 +40,73 @@
 
         <View
             android:id="@+id/ad_app_icon"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/ad_icon_medium"
+            android:layout_height="@dimen/ad_icon_medium"
             android:layout_marginTop="12dp"
             android:background="@drawable/adlibrary_shimmer_block"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/ad_media_card" />
 
-        <View
+        <TextView
             android:id="@+id/ad_badge"
-            android:layout_width="20dp"
-            android:layout_height="12dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
             android:background="@drawable/adlibrary_shimmer_block"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="1dp"
+            android:text="@string/ad"
+            android:textColor="@android:color/transparent"
+            android:textSize="@dimen/ad_text_badge"
+            android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@id/ad_app_icon" />
+            app:layout_constraintTop_toBottomOf="@id/ad_media_card"
+            tools:ignore="SmallSp" />
 
-        <View
+        <TextView
             android:id="@+id/ad_headline"
             android:layout_width="0dp"
-            android:layout_height="14dp"
+            android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
+            android:layout_marginTop="12dp"
             android:layout_marginEnd="8dp"
             android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintBottom_toBottomOf="@id/ad_app_icon"
+            android:fontFamily="@font/inter_semibold"
+            android:lines="1"
+            android:textSize="@dimen/ad_text_headline"
             app:layout_constraintEnd_toStartOf="@id/ad_badge"
             app:layout_constraintStart_toEndOf="@id/ad_app_icon"
-            app:layout_constraintTop_toTopOf="@id/ad_app_icon" />
+            app:layout_constraintTop_toBottomOf="@id/ad_media_card" />
 
-        <View
-            android:id="@+id/ad_body_line1"
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/barrier_icon_header"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="bottom"
+            app:constraint_referenced_ids="ad_app_icon,ad_headline,ad_badge" />
+
+        <TextView
+            android:id="@+id/ad_body"
             android:layout_width="0dp"
-            android:layout_height="10dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:layout_marginEnd="16dp"
             android:background="@drawable/adlibrary_shimmer_block"
+            android:fontFamily="@font/inter"
+            android:lines="2"
+            android:textSize="@dimen/ad_text_body"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_app_icon" />
-            
-        <View
-            android:id="@+id/ad_body_line2"
-            android:layout_width="0dp"
-            android:layout_height="10dp"
-            android:layout_marginTop="4dp"
-            android:layout_marginEnd="32dp"
-            android:background="@drawable/adlibrary_shimmer_block"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_body_line1" />
+            app:layout_constraintTop_toBottomOf="@id/barrier_icon_header" />
 
         <View
             android:id="@+id/ad_call_to_action"
             android:layout_width="0dp"
-            android:layout_height="44dp"
+            android:layout_height="@dimen/ad_cta_height"
             android:layout_marginTop="12dp"
             android:background="@drawable/adlibrary_shimmer_block"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_body_line2" />
+            app:layout_constraintTop_toBottomOf="@id/ad_body" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.facebook.shimmer.ShimmerFrameLayout>

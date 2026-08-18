@@ -4,6 +4,10 @@ import android.app.Activity
 import android.content.Context
 import androidx.annotation.LayoutRes
 import androidx.annotation.MainThread
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
@@ -48,6 +52,15 @@ class InterstitialAdLoader(
     private var coroutineScope = newScope()
     private var job: Job? = null
     private var showJob: Job? = null
+
+    /** A show parked by [whenResumed] until its host resumes. At most one is outstanding. */
+    private var pendingShow: PendingShow? = null
+
+    private class PendingShow(
+        val lifecycle: Lifecycle,
+        val observer: LifecycleEventObserver,
+        val onAborted: (String) -> Unit
+    )
 
     /**
      * Delay between the interstitial finishing loading and it being shown, i.e. how long the loading
@@ -158,6 +171,7 @@ class InterstitialAdLoader(
         interstitialAd = null
         job = null
         showJob = null
+        cancelPendingShow("Loader destroyed before the host resumed")
         coroutineScope.cancel()
         coroutineScope = newScope()
         mInterstitialAdCounter = 0
@@ -232,7 +246,7 @@ class InterstitialAdLoader(
     ) {
         showJob?.cancel()
         if (adShowDelay <= 0L && !showDialog) {
-            present()
+            whenResumed(activity, onAborted, present)
             return
         }
         loadingDialogUtil?.destroy()
@@ -250,8 +264,104 @@ class InterstitialAdLoader(
                 onAborted("Activity finished during the pre-show delay")
                 return@launch
             }
-            present()
+            // Backgrounding the app during the delay no longer costs the fill: the show waits for the
+            // Activity to come back rather than being fired at a paused window.
+            whenResumed(activity, onAborted, present)
         }
+    }
+
+    /**
+     * Runs [present] once the host is actually resumed, instead of dropping the show.
+     *
+     * `InterstitialAd.show` on a paused Activity is not shown - AdMob reports it through
+     * `onAdFailedToShowFullScreenContent` and the fill is spent for nothing. That is easy to hit
+     * without doing anything wrong: the app is backgrounded during [adShowDelay], the show is
+     * triggered from a callback that arrives while a dialog or another Activity is on top, or the
+     * caller fires it from `onPause`. So a not-yet-resumed host parks the show on an ON_RESUME
+     * observer and it goes up when the user is looking at the screen again.
+     *
+     * The wait ends without showing only when the host is genuinely gone (finishing, destroyed, or an
+     * already-DESTROYED lifecycle), which reports through [onAborted] so the caller's terminal
+     * callback still fires exactly once.
+     *
+     * Falls back to the process lifecycle when [activity] is not a [LifecycleOwner] (a bare
+     * `Activity` rather than a `ComponentActivity`): app-in-foreground plus an alive Activity is the
+     * closest signal available, and it cannot wait forever on an owner that never reports.
+     */
+    @MainThread
+    private fun whenResumed(
+        activity: Activity,
+        onAborted: (String) -> Unit,
+        present: () -> Unit
+    ) {
+        cancelPendingShow("Superseded by a newer show request")
+        if (activity.isFinishing || activity.isDestroyed) {
+            AdsLog.e(TAG, "InterstitialAdLoader: not showing, activity is finishing/destroyed")
+            onAborted("Activity finishing/destroyed")
+            return
+        }
+
+        val lifecycle = (activity as? LifecycleOwner)?.lifecycle
+            ?: ProcessLifecycleOwner.get().lifecycle
+
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            present()
+            return
+        }
+        if (lifecycle.currentState == Lifecycle.State.DESTROYED) {
+            AdsLog.e(TAG, "InterstitialAdLoader: not showing, lifecycle is DESTROYED")
+            onAborted("Lifecycle destroyed")
+            return
+        }
+
+        AdsLog.d(
+            TAG,
+            "InterstitialAdLoader: host is ${lifecycle.currentState}, waiting for ON_RESUME to show"
+        )
+        val observer = object : LifecycleEventObserver {
+            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> {
+                        detachPendingShow()
+                        if (activity.isFinishing || activity.isDestroyed) {
+                            AdsLog.e(TAG, "InterstitialAdLoader: resumed but the activity is gone")
+                            onAborted("Activity finishing/destroyed")
+                        } else {
+                            AdsLog.d(TAG, "InterstitialAdLoader: host resumed, showing the parked ad")
+                            present()
+                        }
+                    }
+
+                    Lifecycle.Event.ON_DESTROY -> {
+                        detachPendingShow()
+                        AdsLog.e(TAG, "InterstitialAdLoader: host destroyed before it resumed")
+                        onAborted("Host destroyed before resuming")
+                    }
+
+                    else -> Unit
+                }
+            }
+        }
+        pendingShow = PendingShow(lifecycle, observer, onAborted)
+        lifecycle.addObserver(observer)
+    }
+
+    /** Unregisters the parked show without reporting anything, and returns it. */
+    @MainThread
+    private fun detachPendingShow(): PendingShow? {
+        val parked = pendingShow ?: return null
+        pendingShow = null
+        parked.lifecycle.removeObserver(parked.observer)
+        return parked
+    }
+
+    /**
+     * Drops a parked show and tells its caller why, so a show that will now never happen still ends in
+     * a terminal callback rather than leaving navigation gated on it stalled forever.
+     */
+    @MainThread
+    private fun cancelPendingShow(reason: String) {
+        detachPendingShow()?.onAborted?.invoke(reason)
     }
 
     @MainThread
@@ -454,45 +564,55 @@ class InterstitialAdLoader(
                             dismissOnce()
                             return@launch
                         }
-                        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                            override fun onAdDismissedFullScreenContent() {
-                                AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdDismissedFullScreenContent")
-                                TimeManager.getInstance().reset()
-                                mInterstitialAdCounter = 0
-                                adController.shouldShowOpenAd = true
-                                interstitialAd = null
+                        // Parked rather than fired if the host is not resumed - a show against a paused
+                        // window is reported as a show failure and the fill is gone.
+                        whenResumed(
+                            activity = activity,
+                            onAborted = {
+                                interstitialAd = ad // keep it for the next screen
                                 dismissOnce()
-                                AdEvents.dismissed(context, adUnitId, AdType.INTERSTITIAL)
                             }
-
-                            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                                interstitialAd = null
-                                adController.shouldShowOpenAd = true
-                                AdsLog.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdFailedToShowFullScreenContent error=${adError.message}")
-                                // Without this the caller waits on a dismissal that never arrives.
-                                dismissOnce()
-                                AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, adError)
+                        ) {
+                            ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                override fun onAdDismissedFullScreenContent() {
+                                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdDismissedFullScreenContent")
+                                    TimeManager.getInstance().reset()
+                                    mInterstitialAdCounter = 0
+                                    adController.shouldShowOpenAd = true
+                                    interstitialAd = null
+                                    dismissOnce()
+                                    AdEvents.dismissed(context, adUnitId, AdType.INTERSTITIAL)
+                                }
+    
+                                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                                    interstitialAd = null
+                                    adController.shouldShowOpenAd = true
+                                    AdsLog.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdFailedToShowFullScreenContent error=${adError.message}")
+                                    // Without this the caller waits on a dismissal that never arrives.
+                                    dismissOnce()
+                                    AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, adError)
+                                }
+    
+                                override fun onAdShowedFullScreenContent() {
+                                    adController.shouldShowOpenAd = false
+                                    interstitialAd = null
+                                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdShowedFullScreenContent")
+                                    AdEvents.showed(context, adUnitId, AdType.INTERSTITIAL)
+                                }
+    
+                                override fun onAdClicked() {
+                                    super.onAdClicked()
+                                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdClicked")
+                                    AdEvents.clicked(context, adUnitId, AdType.INTERSTITIAL)
+                                }
                             }
-
-                            override fun onAdShowedFullScreenContent() {
-                                adController.shouldShowOpenAd = false
-                                interstitialAd = null
-                                AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdShowedFullScreenContent")
-                                AdEvents.showed(context, adUnitId, AdType.INTERSTITIAL)
+                            ad.setOnPaidEventListener { adValue ->
+                                coroutineScope.launch {
+                                    AdEvents.revenue(activity.application, ad.adUnitId, AdType.INTERSTITIAL, adValue)
+                                }
                             }
-
-                            override fun onAdClicked() {
-                                super.onAdClicked()
-                                AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdClicked")
-                                AdEvents.clicked(context, adUnitId, AdType.INTERSTITIAL)
-                            }
+                            ad.show(activity)
                         }
-                        ad.setOnPaidEventListener { adValue ->
-                            coroutineScope.launch {
-                                AdEvents.revenue(activity.application, ad.adUnitId, AdType.INTERSTITIAL, adValue)
-                            }
-                        }
-                        ad.show(activity)
                     }
                 }
 

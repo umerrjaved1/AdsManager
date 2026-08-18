@@ -1,76 +1,67 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+    Placeholder for admob_native_banner_type.xml (the 80sdp "bannermedia" shape: 50sdp icon, headline
+    and body in the middle, 50sdp CTA pinned to the end).
+
+    Structural clone of that layout, down to the 10sdp root padding and the fixed 80sdp card, so the
+    slot does not resize when the ad arrives. Kept separate from adlibrary_shimmer_native_banner, which
+    matches the newer layout_native_ad_banner shape - one shimmer cannot fit both.
+-->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:paddingTop="@dimen/_10sdp"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:paddingTop="@dimen/_10sdp"
+    app:shimmer_auto_start="true"
+    app:shimmer_base_alpha="0.95"
+    app:shimmer_duration="1200"
+    app:shimmer_highlight_alpha="0.35">
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/clAd"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/_80sdp"
-        android:background="@drawable/bg_border_blue">
-
+        android:layout_height="@dimen/_80sdp">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:paddingHorizontal="@dimen/_5sdp"
-            >
+            android:paddingHorizontal="@dimen/_5sdp">
 
-
-            <TextView
-                android:id="@+id/attribution"
-                style="@style/AdAttribution"
-                android:layout_gravity="start"
-                android:layout_marginStart="@dimen/_10sdp"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="@+id/ad_headline"
-                app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
-                app:layout_constraintTop_toTopOf="@+id/ad_headline" />
-
-
-
-            <ImageView
+            <View
                 android:id="@+id/ad_app_icon"
                 android:layout_width="@dimen/_50sdp"
                 android:layout_height="@dimen/_50sdp"
                 android:layout_marginTop="@dimen/_10sdp"
-                android:foreground="@android:color/darker_gray"
+                android:background="@drawable/adlibrary_shimmer_block"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
-
-
 
             <TextView
                 android:id="@+id/ad_headline"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="@dimen/_5sdp"
-                android:layout_weight="1"
+                android:background="@drawable/adlibrary_shimmer_block"
                 android:includeFontPadding="false"
-                android:singleLine="true"
-                android:foreground="@android:color/darker_gray"
-                android:textColor="@color/ad_text_primary"
-                android:textSize="@dimen/_13sdp"
+                android:lines="1"
+                android:textSize="@dimen/ad_text_headline"
                 app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
                 app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
                 app:layout_constraintTop_toTopOf="@+id/ad_app_icon" />
 
-            <androidx.appcompat.widget.AppCompatButton
+            <TextView
                 android:id="@+id/ad_call_to_action"
                 android:layout_width="wrap_content"
                 android:layout_height="@dimen/_50sdp"
-                android:minWidth="@dimen/_45sdp"
-                android:background="@drawable/bg_square_blue"
-                android:paddingHorizontal="@dimen/_5sdp"
+                android:background="@drawable/adlibrary_shimmer_block"
                 android:gravity="center"
-                android:textStyle="bold"
-                android:text="Open"
-                android:foreground="@android:color/darker_gray"
+                android:minWidth="@dimen/_45sdp"
+                android:paddingHorizontal="@dimen/_5sdp"
+                android:text="@string/install"
                 android:textAllCaps="false"
-                android:textColor="@color/ad_cta_text"
-                android:textSize="@dimen/_11ssp"
+                android:textColor="@android:color/transparent"
+                android:textSize="@dimen/ad_text_cta"
+                android:textStyle="bold"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -79,77 +70,22 @@
                 android:id="@+id/textView17"
                 style="@style/AdAttribution"
                 android:layout_marginStart="@dimen/_5sdp"
-                android:visibility="visible"
-                app:layout_constraintHorizontal_bias="0.0"
-                app:layout_constraintTop_toBottomOf="@+id/ad_headline"
                 app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
-                tools:layout_editor_absoluteY="33dp" />
+                app:layout_constraintTop_toBottomOf="@+id/ad_headline"
+                tools:ignore="MissingConstraints" />
 
             <TextView
                 android:id="@+id/ad_body"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="@dimen/_5sdp"
+                android:background="@drawable/adlibrary_shimmer_block"
                 android:includeFontPadding="false"
-                android:maxLines="3"
-                android:foreground="@android:color/darker_gray"
-                android:text="The ultimate PDF reader Redefine your PDF reading. Make it worthwhile for your reading tool"
-                android:textColor="@color/ad_text_primary"
-                android:textSize="@dimen/_11sdp"
-                android:visibility="visible"
+                android:lines="2"
+                android:textSize="@dimen/ad_text_body"
                 app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
                 app:layout_constraintStart_toEndOf="@+id/textView17"
                 app:layout_constraintTop_toBottomOf="@+id/ad_headline" />
-
-            <TextView
-                android:id="@+id/ad_advertiser"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:gravity="bottom"
-                android:textSize="@dimen/_9sdp"
-                android:textStyle="normal"
-                android:visibility="gone"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-
-            <RatingBar
-                android:id="@+id/ad_stars"
-                style="?android:attr/ratingBarStyleSmall"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:isIndicator="true"
-                android:numStars="5"
-                android:stepSize="0.5"
-                android:visibility="gone"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-
-
-            <TextView
-                android:id="@+id/ad_price"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:paddingStart="5dp"
-                android:paddingLeft="5dp"
-                android:paddingEnd="5dp"
-                android:paddingRight="5dp"
-                android:textSize="12sp"
-                android:visibility="gone"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-
-            <TextView
-                android:id="@+id/ad_store"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:paddingStart="5dp"
-                android:paddingLeft="5dp"
-                android:paddingEnd="5dp"
-                android:paddingRight="5dp"
-                android:textSize="12sp"
-                android:visibility="gone"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>

@@ -8,7 +8,7 @@ import com.umer_tf.ads.domain.utils.AdsLog
 open class BaseObserver(application: Application) : Application.ActivityLifecycleCallbacks {
 
     private val TAG = "BaseObserver"
-    
+
     init {
         // Register lifecycle callbacks safely after object construction
         registerActivityLifecycleCallbacks(application)
@@ -43,7 +43,9 @@ open class BaseObserver(application: Application) : Application.ActivityLifecycl
     }
 
     override fun onActivityDestroyed(activity: Activity) {
-        currentActivity = null
+        if (activity == currentActivity) {
+            currentActivity = null
+        }
         AdsLog.d(TAG, "Monetization :- onActivityDestroyed: $activity")
     }
 

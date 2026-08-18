@@ -1,68 +1,89 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-    Shimmer placeholder matching layout_native_ad_banner.xml, which is a fixed 130dp tall
-    native banner (icon on the left, badge + headline + body, full-width CTA).
+    Placeholder for layout_native_ad_banner.xml (icon left, badge + headline row, body, full-width CTA).
+
+    Structural clone of that layout: same 12dp padding, 130dp minHeight, ids, constraints and margins.
+    It is a minHeight rather than a fixed 130dp for the same reason the ad layout is - at large font
+    scales the content is taller, and a fixed height would make the placeholder shorter than the ad.
 -->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="130dp"
-    android:minHeight="130dp"
+    android:layout_height="wrap_content"
     app:shimmer_auto_start="true"
     app:shimmer_base_alpha="0.95"
     app:shimmer_duration="1200"
     app:shimmer_highlight_alpha="0.35">
 
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clAd"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="8dp">
+        android:layout_height="wrap_content"
+        android:minHeight="130dp"
+        android:padding="12dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="horizontal">
+        <View
+            android:id="@+id/ad_app_icon"
+            android:layout_width="@dimen/ad_icon_medium"
+            android:layout_height="@dimen/ad_icon_medium"
+            android:background="@drawable/adlibrary_shimmer_block"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
-            <View
-                android:id="@+id/ad_app_icon"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@drawable/adlibrary_shimmer_block" />
+        <TextView
+            android:id="@+id/ad_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/adlibrary_shimmer_block"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="@string/ad"
+            android:textColor="@android:color/transparent"
+            android:textSize="@dimen/ad_text_badge"
+            android:textStyle="bold"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toTopOf="@id/ad_app_icon"
+            tools:ignore="SmallSp" />
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
+        <TextView
+            android:id="@+id/ad_headline"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/adlibrary_shimmer_block"
+            android:fontFamily="@font/inter_semibold"
+            android:lines="1"
+            android:textSize="@dimen/ad_text_headline"
+            app:layout_constraintBottom_toBottomOf="@id/ad_badge"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_badge"
+            app:layout_constraintTop_toTopOf="@id/ad_badge" />
 
-                <View
-                    android:id="@+id/ad_badge"
-                    android:layout_width="24dp"
-                    android:layout_height="12dp"
-                    android:background="@drawable/adlibrary_shimmer_block" />
-
-                <View
-                    android:id="@+id/ad_headline"
-                    android:layout_width="match_parent"
-                    android:layout_height="14dp"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/adlibrary_shimmer_block" />
-
-                <View
-                    android:id="@+id/ad_body_line1"
-                    android:layout_width="160dp"
-                    android:layout_height="10dp"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/adlibrary_shimmer_block" />
-            </LinearLayout>
-        </LinearLayout>
+        <TextView
+            android:id="@+id/ad_body"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/adlibrary_shimmer_block"
+            android:fontFamily="@font/inter"
+            android:lines="1"
+            android:textSize="@dimen/ad_text_body"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/ad_badge" />
 
         <View
             android:id="@+id/ad_call_to_action"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:background="@drawable/adlibrary_shimmer_block" />
-    </LinearLayout>
+            android:layout_width="0dp"
+            android:layout_height="@dimen/ad_cta_height"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/adlibrary_shimmer_block"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ad_body" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </com.facebook.shimmer.ShimmerFrameLayout>

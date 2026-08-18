@@ -104,6 +104,12 @@ ads.loadAndShowInterstitial(this, INTERSTITIAL_UNIT)
 ads.loadAndShowRewarded(this, REWARDED_UNIT)
 ```
 
+Interstitials are only shown while the host is resumed. If a show is requested — or the pre-show
+delay elapses — while the Activity is paused, stopped, or the app is in the background, the show is
+parked and goes up on the next `ON_RESUME` instead of being spent against a window that cannot
+display it. It is dropped, with a failure reported to the caller, only if that host is finishing or
+destroyed.
+
 Dismissal events arrive exactly once on the `events` channel:
 ```kotlin
 lifecycleScope.launch {

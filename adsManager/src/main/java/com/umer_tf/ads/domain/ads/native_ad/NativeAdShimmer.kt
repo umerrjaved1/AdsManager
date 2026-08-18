@@ -33,7 +33,9 @@ object NativeAdShimmer {
         R.layout.admob_native_fullscreen to R.layout.adlibrary_shimmer_native_fullscreen,
         R.layout.admob_small_native_media to R.layout.adlibrary_shimmer_native_media_small,
         R.layout.admob_large_native_media to R.layout.adlibrary_shimmer_native_media_large,
-        R.layout.admob_native_banner_type to R.layout.adlibrary_shimmer_native_banner,
+        // Its own shimmer, not adlibrary_shimmer_native_banner: this shape is a fixed 80sdp card with
+        // a 50sdp trailing CTA, where layout_native_ad_banner is a 130dp card with a full-width one.
+        R.layout.admob_native_banner_type to R.layout.shimmer_native_banner,
 
         // Variant layouts
         R.layout.layout_native_ad_banner to R.layout.adlibrary_shimmer_native_banner,
