@@ -2,355 +2,494 @@ package com.umer_tf.ads.domain.ads.banner
 
 import android.app.Activity
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.MainThread
 import com.facebook.shimmer.ShimmerFrameLayout
-import com.google.ads.mediation.admob.AdMobAdapter
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.AdView
-import com.google.android.gms.ads.LoadAdError
-import com.umer_tf.ads.domain.ads.native_ad.NativeAdTheme
-import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
-import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
+import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
+import com.google.android.libraries.ads.mobile.sdk.banner.AdView
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.umer_tf.ads.domain.analytics.AdEvents
 import com.umer_tf.ads.domain.analytics.AdLoadFailure
-import com.umer_tf.ads.domain.utils.AdsLog
+import com.umer_tf.ads.domain.analytics.AdType
+import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
+import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
+import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_CLICKED
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_FAILED
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_LOADED
+import com.umer_tf.ads.domain.utils.AnalyticsManager
 import com.umer_tf.ads.domain.utils.Utilities.getAdSize
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
+import com.umer_tf.ads.domain.utils.onMainThread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.util.WeakHashMap
 
 /**
- * BannerAdLoader is responsible for loading and displaying different types of banner ads
- * with dynamic shimmer layouts formatted to match each ad size.
- *
- * ### Lifecycle
- * A banner keeps auto-refreshing for as long as it is attached, so hosts must forward their own
- * lifecycle:
- *
- * ```kotlin
- * override fun onPause()   { bannerAdLoader.pause();   super.onPause() }
- * override fun onResume()  { super.onResume();         bannerAdLoader.resume() }
- * override fun onDestroy() { bannerAdLoader.destroy(); super.onDestroy() }
- * ```
- *
- * Without this the [AdView] refreshes while the screen is backgrounded - billing impressions nobody
- * sees - and holds its Activity alive.
- *
- * `AdViewModel.bindBanner` forwards the lifecycle for you; prefer it over calling this loader directly.
+ * BannerAdLoader is responsible for loading and displaying different types of banner ads.
  */
-class BannerAdLoader : IBannerAdLoader {
-    private val TAG = "AdsManager_Banner"
+class BannerAdLoader: IBannerAdLoader {
+    val TAG = "BannerAdLoader"
 
-    // Recreated by destroy() - a cancelled scope stays cancelled and would drop later revenue events.
-    private var coroutineScope = newScope()
+    // Proper coroutine scope that cancels when loader is destroyed
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** Live AdView per host frame, so the one being replaced can be destroyed. */
+    private val adViewsByFrame = java.util.WeakHashMap<FrameLayout, AdView>()
+
+    /** Frames already bound to their Activity lifecycle, to register the observer only once. */
+    private val observedFrames = java.util.WeakHashMap<FrameLayout, Boolean>()
 
     /**
-     * Live AdViews keyed by the container they live in.
+     * Puts [adView] in [frameLayout] and takes over the lifecycle of the banner it replaces.
      *
-     * Weak keys so a container from a destroyed screen cannot be leaked by this map alone; the
-     * AdViews themselves are still destroyed explicitly, since the SDK holds its own references.
+     * Two leaks used to come out of this and both cost show rate:
+     *
+     * 1. Every reload created a new AdView and only *detached* the old one. A detached AdView keeps
+     *    its own refresh timer (AdMob "automatic refresh" on the unit), so each reload left behind
+     *    another invisible AdView requesting ads forever - requests that can never be seen.
+     * 2. Nothing ever called `pause()`, so the visible AdView also kept refreshing while its screen
+     *    was paused or the app was in the background.
+     *
+     * A unit that requests constantly without displaying gets its fill rate throttled, which is why
+     * this also shows up as a falling match rate.
+     *
+     * The Next-Gen `AdView` has no `pause()`/`resume()` - it ties refreshing to its own attachment
+     * and visibility instead, so the pause half of (2) is now the SDK's job. Destroying the replaced
+     * and the destroyed-screen AdView is still ours, and is still what stops (1).
      */
-    private val activeAdViews = WeakHashMap<FrameLayout, AdView>()
+    private fun attachAdView(activity: Activity, frameLayout: FrameLayout, adView: AdView) {
+        adViewsByFrame.put(frameLayout, adView)?.takeIf { it !== adView }?.let { previous ->
+            Log.d(TAG, "Monetization :- destroying the banner this frame held before")
+            previous.visibility = View.GONE
+            previous.destroy()
+        }
+        frameLayout.removeAllViews()
+        frameLayout.addView(adView)
 
-    private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        if (observedFrames[frameLayout] == true) return
+        val owner = activity as? androidx.lifecycle.LifecycleOwner ?: return
+        observedFrames[frameLayout] = true
+        // One observer per frame, always acting on whichever AdView is current. Only onDestroy is
+        // handled now: the Next-Gen AdView exposes no pause/resume and suspends its own refresh
+        // while detached or hidden, so the old onPause/onResume forwarding has nothing to call.
+        owner.lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                adViewsByFrame.remove(frameLayout)?.destroy()
+                observedFrames.remove(frameLayout)
+                owner.lifecycle.removeObserver(this)
+            }
+        })
+    }
 
+    /**
+     * Shows an adaptive banner ad.
+     *
+     * @param activity The activity context.
+     * @param shimmerFrameLayout The shimmer layout to show while the ad is loading can be null.
+     * @param frameLayout The layout to hold the ad view.
+     * @param adUnitId The ad unit ID.
+     */
     @MainThread
     override fun showAdaptiveBanner(
         activity: Activity,
         shimmerFrameLayout: ShimmerFrameLayout?,
         frameLayout: FrameLayout,
         @ValidateAdUnitId adUnitId: String
-    ) = showBanner(activity, adUnitId, frameLayout, shimmerFrameLayout, BannerAdType.ADAPTIVE)
+    ) {
+        try {
+            // A false return means "skip this request": strictMode has already thrown if the host
+            // wanted a malformed id to be fatal. Folded into the same refusal as a blocked request
+            // so the placeholder is hidden on both paths.
+            if (!AdUnitIdValidator.validateAdUnitId(adUnitId) || !shouldShowAd(activity)) {
+                shimmerFrameLayout?.visibility = View.GONE
+                return
+            }
+            frameLayout.visibility = View.GONE
+            shimmerFrameLayout?.startShimmer()
+            shimmerFrameLayout?.visibility = View.VISIBLE
 
-    @MainThread
-    override fun showMemRecBanner(
-        activity: Activity,
-        frameLayout: FrameLayout,
-        shimmerFrameLayout: ShimmerFrameLayout?,
-        @ValidateAdUnitId adUnitId: String
-    ) = showBanner(activity, adUnitId, frameLayout, shimmerFrameLayout, BannerAdType.MEDIUM_RECTANGLE)
+            val adView = AdView(activity)
+            attachAdView(activity, frameLayout, adView)
 
-    @MainThread
-    override fun showCollapsableBanner(
-        activity: Activity,
-        frameLayout: FrameLayout,
-        shimmerFrameLayout: ShimmerFrameLayout?,
-        @ValidateAdUnitId adUnitId: String,
-        isTop: Boolean
-    ) = showBanner(
-        activity,
-        adUnitId,
-        frameLayout,
-        shimmerFrameLayout,
-        if (isTop) BannerAdType.COLLAPSIBLE_TOP else BannerAdType.COLLAPSIBLE_BOTTOM
-    )
+            // Unit id and size are both request properties now: AdView has neither an adUnitId
+            // property nor setAdSize().
+            val adSize = getAdSize(activity)
+            val adRequest = BannerAdRequest.Builder(adUnitId, adSize).build()
+
+            // Load outcome comes from the load callback; click, impression and revenue come from the
+            // loaded BannerAd's event callback. Every body hops to Main - these fire on a background
+            // thread and touch the shimmer and the ad container.
+            adView.loadAd(adRequest, object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) = onMainThread {
+                    Log.d(TAG, "Monetization :- onBannerAdLoaded:")
+
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                    frameLayout.visibility = View.VISIBLE
+                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED,"banner_ad")
+
+                    ad.adEventCallback = object : BannerAdEventCallback {
+                        override fun onAdClicked() = onMainThread {
+                            AnalyticsManager.getInstance(activity)
+                                .sendAnalytics(AD_CLICKED, "banner_ad")
+                        }
+
+                        override fun onAdPaid(value: AdValue) {
+                            coroutineScope.launch {
+                                AdsAnalytics.logAppsFlyerRevenue(
+                                    adUnitId,
+                                    "Banner",
+                                    value,
+                                    activity.application
+                                )
+                            }
+                        }
+                    }
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
+                    Log.d(TAG, "Monetization :- onBannerAdFailed: ${adError.message}")
+                    if (frameLayout.visibility == View.VISIBLE) {
+                        frameLayout.visibility = View.GONE
+                    }
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_ad")
+                }
+            })
+        } catch (e: Exception) {
+            Log.d(TAG, "Monetization :- loadBanner: ${e.message}")
+        }
+    }
 
     /**
-     * Loads and shows a banner of [type] into [frameLayout], reporting the outcome to [onResult].
+     * Shows a medium rectangle banner ad.
      *
-     * The three `show*Banner` methods above are thin wrappers over this. Unlike them, this one tells
-     * the caller what happened, which is what `AdViewModel` needs in order to publish banner state -
-     * a banner that silently fails is indistinguishable from one still loading.
+     * @param activity The activity context.
+     * @param frameLayout The layout to hold the ad view.
+     * @param adUnitId The ad unit ID.
+     */
+    @MainThread
+    override fun showMemRecBanner(activity: Activity, frameLayout: FrameLayout,shimmerFrameLayout: ShimmerFrameLayout?, @ValidateAdUnitId adUnitId: String) {
+        try {
+            // A false return means "skip this request": strictMode has already thrown if the host
+            // wanted a malformed id to be fatal. Folded into the same refusal as a blocked request
+            // so the placeholder is hidden on both paths.
+            if (!AdUnitIdValidator.validateAdUnitId(adUnitId) || !shouldShowAd(activity)) {
+                shimmerFrameLayout?.visibility = View.GONE
+                return
+            }
+            frameLayout.visibility = View.GONE
+            shimmerFrameLayout?.startShimmer()
+            shimmerFrameLayout?.visibility = View.VISIBLE
+
+
+            val adView = AdView(activity)
+            attachAdView(activity, frameLayout, adView)
+
+            val adRequest = BannerAdRequest.Builder(adUnitId, AdSize.MEDIUM_RECTANGLE).build()
+
+            adView.loadAd(adRequest, object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) = onMainThread {
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                    frameLayout.visibility = View.VISIBLE
+                    Log.d(TAG, "Monetization :- onMediumRectangleAdLoaded")
+                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_memrec_ad")
+
+                    ad.adEventCallback = object : BannerAdEventCallback {
+                        override fun onAdClicked() = onMainThread {
+                            AnalyticsManager.getInstance(activity)
+                                .sendAnalytics(AD_CLICKED, "banner_collapsable_ad")
+                        }
+
+                        override fun onAdPaid(value: AdValue) {
+                            coroutineScope.launch {
+                                AdsAnalytics.logAppsFlyerRevenue(
+                                    adUnitId,
+                                    "MemRecBanner",
+                                    value,
+                                    activity.application
+                                )
+                            }
+                        }
+                    }
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
+                    frameLayout.visibility = View.GONE
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                    Log.d(TAG, "Monetization :- onMediumRectangleAdFailed: ${adError.message}")
+                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_memrec_ad")
+                }
+            })
+        } catch (e: Exception) {
+            shimmerFrameLayout?.stopShimmer()
+            shimmerFrameLayout?.visibility = View.GONE
+            frameLayout.visibility = View.GONE
+            Log.d(TAG, "loadMediumRectangle: ${e.message}")
+        }
+    }
+
+    /**
+     * Shows a collapsible banner ad.
      *
-     * @param shimmer Either a [ShimmerFrameLayout] to drive directly, or an **empty container** the
-     *   library inflates the shape-appropriate shimmer into (see [BannerShimmer]). Null for no
-     *   placeholder. Whichever it is, the library shows, sizes, stops and hides it - the caller never
-     *   touches it.
-     * @param onResult Invoked exactly once on the main thread: `(true, null)` on success,
-     *   `(false, failure)` on any refusal or load error.
+     * @param activity The activity context.
+     * @param frameLayout The layout to hold the ad view.
+     * @param adUnitId The ad unit ID.
+     * @param isTop Boolean indicating if the banner is collapsible from the top.
+     */
+    @MainThread
+    override fun showCollapsableBanner(activity: Activity, frameLayout: FrameLayout,shimmerFrameLayout: ShimmerFrameLayout?, @ValidateAdUnitId adUnitId: String, isTop: Boolean) {
+        try {
+            // A false return means "skip this request": strictMode has already thrown if the host
+            // wanted a malformed id to be fatal. Folded into the same refusal as a blocked request
+            // so the placeholder is hidden on both paths.
+            if (!AdUnitIdValidator.validateAdUnitId(adUnitId) || !shouldShowAd(activity)) {
+                shimmerFrameLayout?.visibility = View.GONE
+                return
+            }
+            frameLayout.visibility = View.GONE
+            shimmerFrameLayout?.startShimmer()
+            shimmerFrameLayout?.visibility = View.VISIBLE
+
+            val adView = AdView(activity)
+            attachAdView(activity, frameLayout, adView)
+            if (frameLayout.visibility == View.GONE) frameLayout.visibility = View.VISIBLE
+            val adSize = getAdSize(activity)
+            val extras = Bundle()
+            if (isTop) extras.putString("collapsible", "top")
+            else extras.putString("collapsible", "bottom")
+            // addNetworkExtrasBundle(AdMobAdapter::class.java, ...) is gone; extras destined for
+            // Google itself go through setGoogleExtrasBundle, so the AdMobAdapter class reference is
+            // no longer needed. The "collapsible" key is unchanged.
+            val adRequest = BannerAdRequest.Builder(adUnitId, adSize)
+                .setGoogleExtrasBundle(extras)
+                .build()
+
+            adView.loadAd(adRequest, object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) = onMainThread {
+                    Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdLoaded")
+
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                    frameLayout.visibility = View.VISIBLE
+                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_collapsable_ad")
+
+                    ad.adEventCallback = object : BannerAdEventCallback {
+                        override fun onAdClicked() = onMainThread {
+                            AnalyticsManager.getInstance(activity)
+                                .sendAnalytics(AD_CLICKED, "banner_collapsable_ad")
+                        }
+
+                        override fun onAdPaid(value: AdValue) {
+                            coroutineScope.launch {
+                                AdsAnalytics.logAppsFlyerRevenue(
+                                    adUnitId,
+                                    "CollapsableBanner",
+                                    value,
+                                    activity.application
+                                )
+                            }
+                        }
+                    }
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
+                    Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdFailedToLoad: ${adError.message}")
+
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                    frameLayout.visibility = View.GONE
+                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_collapsable_ad")
+                }
+            })
+        } catch (e: Exception) {
+
+            shimmerFrameLayout?.stopShimmer()
+            shimmerFrameLayout?.visibility = View.GONE
+            frameLayout.visibility = View.GONE
+            Log.d(TAG, "loadMediumRectangle: ${e.message}")
+        }
+    }
+    
+    /**
+     * Loads and shows a banner of any [BannerAdType] into [container], reporting the outcome once.
+     *
+     * The data-driven form of the three `show*Banner` methods above, which differ only in ad size and
+     * request extras. Describing a banner as `adUnitId` + shape is what lets [AdViewModel] drive one
+     * without holding a View, and the outcome callback is what gives it a state to publish - the
+     * older methods report nothing, so a caller cannot tell a fill from a no-fill.
+     *
+     * @param shimmerHost Where the placeholder goes. Defaults to [container], so one FrameLayout is
+     *   enough; pass a separate container to put it elsewhere, an existing [ShimmerFrameLayout] to
+     *   keep your own, or null for no placeholder. The library starts and stops it either way.
+     * @param onOutcome Invoked exactly once, on the main thread, on every terminal path - fill,
+     *   no-fill, malformed id, blocked request, exception.
      */
     @MainThread
     @JvmOverloads
     fun showBanner(
         activity: Activity,
         @ValidateAdUnitId adUnitId: String,
-        frameLayout: FrameLayout,
-        shimmer: ViewGroup? = null,
+        container: FrameLayout,
+        shimmerHost: ViewGroup? = container,
         type: BannerAdType = BannerAdType.ADAPTIVE,
-        onResult: ((Boolean, AdLoadFailure?) -> Unit)? = null
+        onOutcome: ((Boolean, AdLoadFailure?) -> Unit)? = null
     ) {
-        AdsLog.d(TAG, "BannerAdLoader: showBanner type=$type requested for adUnitId=$adUnitId")
+        val adType = type.adType
 
-        var delivered = false
-        val deliverOnce = { success: Boolean, failure: AdLoadFailure? ->
-            if (!delivered) {
-                delivered = true
-                onResult?.invoke(success, failure)
-            }
-        }
-
-        // Gate before touching the placeholder. Attaching first and hiding on refusal is what makes a
-        // premium or consent-blocked user see the shimmer flash for a frame before the slot collapses.
-        val refuseBeforeAttach = { reason: String ->
-            val failure = AdLoadFailure(AdLoadFailure.CODE_LIBRARY, reason)
-            shimmer?.visibility = View.GONE
-            (shimmer as? ShimmerFrameLayout)?.stopShimmer()
-            frameLayout.visibility = View.GONE
-            AdEvents.failedToLoad(activity, adUnitId, type.adType, failure)
-            deliverOnce(false, failure)
-        }
-
+        // Every refusal below is decided before anything is attached: starting the shimmer first and
+        // then discovering the request is blocked shows a one-frame flash in a slot that will stay
+        // empty. A false return means "skip": strictMode has already thrown if the host wanted
+        // a malformed id to be fatal, so here it reports through onOutcome instead.
         if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
-            refuseBeforeAttach("Invalid ad unit id \"$adUnitId\"")
+            failBanner(activity, container, shimmerHost, null, adUnitId, adType,
+                "Malformed ad unit id \"$adUnitId\"", onOutcome)
             return
         }
         if (!shouldShowAd(activity)) {
-            refuseBeforeAttach("Request blocked: premium user, offline, or consent not granted")
+            failBanner(activity, container, shimmerHost, null, adUnitId, adType,
+                "Request blocked: premium, offline or consent-gated", onOutcome)
             return
         }
 
-        // The placeholder can live inside the ad container itself, so a caller only has to declare one
-        // FrameLayout. That ordering is load-bearing: the AdView has to go in first (attachAdView
-        // clears the container, and an AdView must be in the hierarchy to size and render), then the
-        // shimmer is layered on top of it and simply hidden once the ad arrives.
-        val inContainer = shimmer === frameLayout
-
-        // Declared out here so the catch below can still collapse them.
-        var shimmerFrameLayout: ShimmerFrameLayout? = null
-        var shimmerHost: ViewGroup? = null
-
         try {
-            // Visible from the start when it hosts the placeholder; otherwise it stays collapsed
-            // until the ad actually arrives.
-            frameLayout.visibility = if (inContainer) View.VISIBLE else View.GONE
+            val adView = AdView(activity)
+            // The AdView has to be in the hierarchy before it can size itself, and attachAdView
+            // clears the container - so it goes in first and the shimmer is layered over it, rather
+            // than the native case's replace-then-swap.
+            attachAdView(activity, container, adView)
+            container.visibility = View.VISIBLE
 
-            val adSize = when (type) {
-                BannerAdType.MEDIUM_RECTANGLE -> AdSize.MEDIUM_RECTANGLE
-                else -> getAdSize(activity)
-            }
+            val shimmer = resolveShimmer(shimmerHost, container, type)
 
-            val adView = attachAdView(activity, frameLayout, adUnitId)
-            adView.setAdSize(adSize)
-
-            // A caller's own ShimmerFrameLayout is used as-is; anything else is an empty host we fill
-            // with the shimmer matching this banner shape.
-            shimmerFrameLayout = when (shimmer) {
-                null -> null
-                is ShimmerFrameLayout -> shimmer
-                else -> BannerShimmer.attachTo(
-                    shimmer,
-                    type,
-                    NativeAdTheme.auto(activity),
-                    clearHost = !inContainer
-                )
-            }
-            // The wrapper to collapse alongside the shimmer - hiding only the inner view leaves its
-            // height, padding and margins as a gap. Never the ad container: that holds the banner.
-            shimmerHost = shimmer.takeIf { it !== shimmerFrameLayout && it !== frameLayout }
-
-            if (type == BannerAdType.MEDIUM_RECTANGLE) {
-                prepareBannerShimmer(activity, shimmerFrameLayout, targetHeightInDp = 250)
+            val adSize = if (type == BannerAdType.MEDIUM_RECTANGLE) {
+                AdSize.MEDIUM_RECTANGLE
             } else {
-                prepareBannerShimmer(activity, shimmerFrameLayout, adSize = adSize)
+                getAdSize(activity)
+            }
+            val requestBuilder = BannerAdRequest.Builder(adUnitId, adSize)
+            if (type.isCollapsible) {
+                requestBuilder.setGoogleExtrasBundle(Bundle().apply {
+                    putString("collapsible", if (type == BannerAdType.COLLAPSIBLE_TOP) "top" else "bottom")
+                })
             }
 
-            adView.adListener = object : AdListener() {
-                override fun onAdLoaded() {
-                    super.onAdLoaded()
-                    AdsLog.d(TAG, "BannerAdLoader: $type onAdLoaded successfully")
-                    // The host is hidden on success too, not just on failure: leaving it visible
-                    // behind the loaded banner keeps its height reserved as blank space.
-                    stopShimmer(shimmerFrameLayout, shimmerHost)
-                    frameLayout.visibility = View.VISIBLE
-                    AdEvents.loaded(activity, adUnitId, type.adType)
-                    deliverOnce(true, null)
+            adView.loadAd(requestBuilder.build(), object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) = onMainThread {
+                    hideShimmer(shimmer)
+                    container.visibility = View.VISIBLE
+                    AdEvents.loaded(activity, adUnitId, adType)
+
+                    ad.adEventCallback = object : BannerAdEventCallback {
+                        override fun onAdImpression() = onMainThread {
+                            AdEvents.impression(activity, adUnitId, adType)
+                        }
+
+                        override fun onAdClicked() = onMainThread {
+                            AdEvents.clicked(activity, adUnitId, adType)
+                        }
+
+                        override fun onAdPaid(value: AdValue) {
+                            AdEvents.revenue(activity.applicationContext, adUnitId, adType, value)
+                        }
+                    }
+                    onOutcome?.invoke(true, null)
                 }
 
-                override fun onAdFailedToLoad(adError: LoadAdError) {
-                    super.onAdFailedToLoad(adError)
-                    AdsLog.e(TAG, "BannerAdLoader: $type onAdFailedToLoad error=${adError.message}")
-                    hideBanner(shimmerFrameLayout, shimmerHost, frameLayout)
-                    AdEvents.failedToLoad(activity, adUnitId, type.adType, adError)
-                    deliverOnce(
-                        false,
-                        AdLoadFailure(adError.code, adError.message.orEmpty(), adError.domain)
-                    )
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
+                    hideShimmer(shimmer)
+                    container.visibility = View.GONE
+                    AdEvents.failedToLoad(activity, adUnitId, adType, adError)
+                    onOutcome?.invoke(false, AdLoadFailure(adError.code.value, adError.message))
                 }
-
-                override fun onAdClicked() {
-                    super.onAdClicked()
-                    AdsLog.d(TAG, "BannerAdLoader: $type onAdClicked")
-                    AdEvents.clicked(activity, adUnitId, type.adType)
-                }
-
-                override fun onAdImpression() {
-                    super.onAdImpression()
-                    AdsLog.d(TAG, "BannerAdLoader: $type onAdImpression")
-                    AdEvents.impression(activity, adUnitId, type.adType)
-                }
-            }
-
-            adView.setOnPaidEventListener { adValue ->
-                coroutineScope.launch {
-                    AdEvents.revenue(activity.application, adUnitId, type.adType, adValue)
-                }
-            }
-
-            adView.loadAd(buildRequest(type))
+            })
         } catch (e: Exception) {
-            AdsLog.e(TAG, "BannerAdLoader: $type exception=${e.message}")
-            hideBanner(shimmerFrameLayout, shimmerHost, frameLayout)
-            deliverOnce(false, AdLoadFailure(AdLoadFailure.CODE_LIBRARY, e.message ?: "Banner failed"))
+            failBanner(activity, container, shimmerHost, null, adUnitId, adType,
+                "showBanner threw: ${e.message}", onOutcome)
         }
-    }
-
-    private fun buildRequest(type: BannerAdType): AdRequest {
-        if (!type.isCollapsible) return AdRequest.Builder().build()
-        val extras = Bundle().apply {
-            putString("collapsible", if (type == BannerAdType.COLLAPSIBLE_TOP) "top" else "bottom")
-        }
-        return AdRequest.Builder().addNetworkExtrasBundle(AdMobAdapter::class.java, extras).build()
     }
 
     /**
-     * Creates the AdView for [frameLayout], destroying whatever was there before.
+     * Resolves the placeholder for a slot: a caller's own [ShimmerFrameLayout] is used as-is, any
+     * other container has the shimmer for [type] inflated into it.
      *
-     * Each show* call used to `new` an AdView and only detach the previous one from the container, so
-     * every re-show left an undestroyed banner refreshing in the background.
+     * When the host *is* the ad container it already holds the AdView, so the shimmer is added on top
+     * instead of replacing it.
+     */
+    private fun resolveShimmer(
+        shimmerHost: ViewGroup?,
+        container: FrameLayout,
+        type: BannerAdType
+    ): ShimmerFrameLayout? {
+        if (shimmerHost == null) return null
+        if (shimmerHost is ShimmerFrameLayout) {
+            shimmerHost.visibility = View.VISIBLE
+            shimmerHost.startShimmer()
+            return shimmerHost
+        }
+        return BannerShimmer.attachTo(shimmerHost, type, clearHost = shimmerHost !== container)
+    }
+
+    private fun hideShimmer(shimmer: ShimmerFrameLayout?) {
+        shimmer ?: return
+        shimmer.stopShimmer()
+        shimmer.visibility = View.GONE
+    }
+
+    /** One terminal failure path: collapse the slot, report it, settle the caller. */
+    private fun failBanner(
+        activity: Activity,
+        container: FrameLayout,
+        shimmerHost: ViewGroup?,
+        shimmer: ShimmerFrameLayout?,
+        adUnitId: String,
+        adType: AdType,
+        reason: String,
+        onOutcome: ((Boolean, AdLoadFailure?) -> Unit)?
+    ) {
+        Log.d(TAG, "Monetization :- showBanner refused: $reason")
+        hideShimmer(shimmer ?: shimmerHost as? ShimmerFrameLayout)
+        // A separate shimmer wrapper keeps its height and margins when merely emptied, leaving a gap
+        // where the ad would have been.
+        if (shimmerHost !== container) shimmerHost?.visibility = View.GONE
+        container.visibility = View.GONE
+        AdEvents.failedToLoad(activity, adUnitId, adType, reason)
+        onOutcome?.invoke(false, AdLoadFailure(AdLoadFailure.CODE_LIBRARY, reason))
+    }
+
+    /**
+     * Destroys the banner held by [container] and empties it.
+     *
+     * The per-frame Activity observer already does this on `onDestroy`; this is for a slot that goes
+     * away while its Activity lives on, which the observer never sees.
      */
     @MainThread
-    private fun attachAdView(
-        activity: Activity,
-        frameLayout: FrameLayout,
-        adUnitId: String
-    ): AdView {
-        destroyFor(frameLayout)
-        val adView = AdView(activity)
-        adView.adUnitId = adUnitId
-        frameLayout.removeAllViews()
-        frameLayout.addView(adView)
-        activeAdViews[frameLayout] = adView
-        return adView
+    fun destroyFor(container: FrameLayout) {
+        adViewsByFrame.remove(container)?.destroy()
+        container.removeAllViews()
+        container.visibility = View.GONE
     }
 
-    /** Stops the placeholder and collapses both it and any wrapper we inflated it into. */
-    private fun stopShimmer(shimmerFrameLayout: ShimmerFrameLayout?, shimmerHost: ViewGroup?) {
-        shimmerFrameLayout?.stopShimmer()
-        shimmerFrameLayout?.visibility = View.GONE
-        shimmerHost?.visibility = View.GONE
-    }
-
-    private fun hideBanner(
-        shimmerFrameLayout: ShimmerFrameLayout?,
-        shimmerHost: ViewGroup?,
-        frameLayout: FrameLayout
-    ) {
-        stopShimmer(shimmerFrameLayout, shimmerHost)
-        frameLayout.visibility = View.GONE
-    }
-
-    private fun prepareBannerShimmer(
-        activity: Activity,
-        shimmerFrameLayout: ShimmerFrameLayout?,
-        targetHeightInDp: Int? = null,
-        adSize: AdSize? = null
-    ) {
-        if (shimmerFrameLayout == null) return
-        val theme = NativeAdTheme.auto(activity)
-        theme.applyShimmerTo(shimmerFrameLayout)
-
-        val density = activity.resources.displayMetrics.density
-        val heightPx = when {
-            targetHeightInDp != null -> (targetHeightInDp * density).toInt()
-            adSize != null -> adSize.getHeightInPixels(activity).takeIf { it > 0 } ?: (50 * density).toInt()
-            else -> (50 * density).toInt()
-        }
-
-        // Assigning layoutParams?.apply{} wiped the params whenever they were still null (a shimmer
-        // that has not been laid out yet), so guard instead of assigning null back.
-        shimmerFrameLayout.layoutParams?.let { params ->
-            params.height = heightPx
-            shimmerFrameLayout.layoutParams = params
-        } ?: run {
-            shimmerFrameLayout.minimumHeight = heightPx
-        }
-        shimmerFrameLayout.startShimmer()
-        shimmerFrameLayout.visibility = View.VISIBLE
-    }
-
-    /** Suspends refreshing for every live banner. Call from the host's `onPause`. */
-    @MainThread
-    fun pause() {
-        activeAdViews.values.forEach { runCatching { it.pause() } }
-    }
-
-    /** Resumes refreshing for every live banner. Call from the host's `onResume`. */
-    @MainThread
-    fun resume() {
-        activeAdViews.values.forEach { runCatching { it.resume() } }
-    }
-
-    /** Destroys the banner inside [frameLayout], if any. Use when a single slot goes away. */
-    @MainThread
-    fun destroyFor(frameLayout: FrameLayout) {
-        activeAdViews.remove(frameLayout)?.let { adView ->
-            runCatching {
-                (adView.parent as? FrameLayout)?.removeView(adView)
-                adView.destroy()
-            }
-        }
-    }
-
-    @MainThread
+    /**
+     * Cleans up resources and cancels all coroutines.
+     */
     fun destroy() {
-        AdsLog.d(TAG, "BannerAdLoader: destroy called, releasing ${activeAdViews.size} AdView(s)")
-        activeAdViews.values.forEach { adView ->
-            runCatching {
-                (adView.parent as? FrameLayout)?.removeView(adView)
-                adView.destroy()
-            }
-        }
-        activeAdViews.clear()
+        adViewsByFrame.values.forEach { runCatching { it.destroy() } }
+        adViewsByFrame.clear()
         coroutineScope.cancel()
-        coroutineScope = newScope()
     }
 }

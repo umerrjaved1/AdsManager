@@ -1,22 +1,28 @@
 package com.umer_tf.ads.domain.ads.native_ad
 
-import com.google.android.gms.ads.nativead.NativeAd
+import android.app.Activity
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
+import com.umer_tf.ads.domain.ads.listeners.OnSuccessListenerNative
 
 interface INativeAdLoader {
     fun loadAndShow(
         adUnitId: String,
         builder: NativeAdBuilder,
-        onAdLoaded: ((Boolean) -> Unit)? = null
+        activity: Activity,
+        onSuccessListener: OnSuccessListener<Boolean>?
     )
 
     fun loadAd(
         adUnitId: String,
-        onAdLoadedNative: ((Boolean, NativeAd?) -> Unit)? = null
+        activity: Activity,
+        onSuccessListener: OnSuccessListenerNative<Boolean,NativeAd?>?=null
     )
 
-    fun showLoadedAd(builder: NativeAdBuilder, adUnitId: String)
+    fun showLoadedAd(builder: NativeAdBuilder, adUnitId: String,activity: Activity)
 
     fun destroy()
 
     fun isAdLoaded(): Boolean
+
 }

@@ -1,14 +1,17 @@
 package com.umer_tf.ads.domain.analytics
 
-import com.google.android.gms.ads.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.PrecisionType
 
 /**
  * Why an ad request failed, decoupled from the AdMob SDK types.
  *
- * @param code AdMob error code (`LoadAdError.getCode()`), or -1 when the failure came from the library
- *   rather than the SDK - a malformed ad unit id, or a request suppressed by consent/kill switch.
+ * @param code AdMob error code (`LoadAdError.getCode().value`), or -1 when the failure came from the
+ *   library rather than the SDK - a malformed ad unit id, or a request suppressed by consent/kill
+ *   switch.
  * @param message Human-readable reason.
- * @param domain AdMob error domain, when the SDK supplied one.
+ * @param domain Always null since the Next-Gen SDK migration: `LoadAdError` no longer carries a
+ *   domain. Kept on the data class so listener implementations written against 2.0 still compile.
  */
 data class AdLoadFailure(
     val code: Int,
@@ -21,7 +24,7 @@ data class AdLoadFailure(
     }
 }
 
-/** Reliability of a revenue figure, mirroring `AdValue.PrecisionType`. */
+/** Reliability of a revenue figure, mirroring the SDK's [PrecisionType]. */
 enum class AdValuePrecision {
     UNKNOWN,
     ESTIMATED,
@@ -29,10 +32,10 @@ enum class AdValuePrecision {
     PRECISE;
 
     companion object {
-        fun from(precisionType: Int): AdValuePrecision = when (precisionType) {
-            AdValue.PrecisionType.ESTIMATED -> ESTIMATED
-            AdValue.PrecisionType.PUBLISHER_PROVIDED -> PUBLISHER_PROVIDED
-            AdValue.PrecisionType.PRECISE -> PRECISE
+        fun from(precisionType: PrecisionType): AdValuePrecision = when (precisionType) {
+            PrecisionType.ESTIMATED -> ESTIMATED
+            PrecisionType.PUBLISHER_PROVIDED -> PUBLISHER_PROVIDED
+            PrecisionType.PRECISE -> PRECISE
             else -> UNKNOWN
         }
     }

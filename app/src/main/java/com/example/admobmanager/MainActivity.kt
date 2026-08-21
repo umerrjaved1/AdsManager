@@ -1,5 +1,6 @@
 package com.example.admobmanager
 
+import android.util.Log
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -14,15 +15,20 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.facebook.shimmer.ShimmerFrameLayout
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 import com.umer_tf.ads.domain.ads.banner.BannerAdType
 import com.umer_tf.ads.domain.ads.native_ad.FullScreenNativeAdActivity
+import com.umer_tf.ads.domain.ads.native_ad.NativeAdBuilder
+import com.umer_tf.ads.domain.ads.native_ad.NativeAdLayout
+import com.umer_tf.ads.domain.ads.native_ad.NativeAdShimmer
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdTheme
+import com.umer_tf.ads.domain.ads.native_ad.stopAndHide
 import com.umer_tf.ads.domain.core.AdMobManager
 import com.umer_tf.ads.domain.viewmodel.AdEvent
 import com.umer_tf.ads.domain.viewmodel.AdViewModel
 import com.umer_tf.ads.domain.viewmodel.FullScreenAdUiState
 import com.umer_tf.ads.domain.viewmodel.bindBanner
-import com.umer_tf.ads.domain.viewmodel.bindNativeAd
 import kotlinx.coroutines.launch
 
 /**
@@ -84,23 +90,17 @@ class MainActivity : AppCompatActivity() {
         adMobManager = AdMobManager.getInstance(application)
             .setAppOpenAdStartId(appOpenTestAdUnitId)
             .setAppOpenAdResumeId(appOpenTestAdUnitId)
-        adMobManager.initialize()
+        // The Next-Gen SDK starts asynchronously and takes the app id explicitly, so initialize()
+        // now reports back rather than returning once it is done.
+        adMobManager.initialize {
+            Log.d("MainActivity", "AdMob initialized")
+        }
 
-        val theme = NativeAdTheme.auto(this)
-
-        // The whole native integration: a shape code, an ad unit and one container. The shimmer is
-        // inflated into that container and replaced by the ad. Each slot gets its own key (derived
-        // from the container's view id), so the twelve shapes load and render independently.
+        // The variant slots no longer load on their own: the two buttons below the section header
+        // drive them, and auto-loading here would both spend twelve ads nobody asked for and fight
+        // whichever button was pressed for ownership of the containers.
         nativeSlots.forEach { slot ->
-            val container = findViewById<FrameLayout>(slot.containerId)
-            trackHeight(container, findViewById(slot.labelId), slot.title)
-            ads.bindNativeAd(
-                owner = this,
-                adUnitId = nativeTestAdUnitId,
-                layout = slot.layoutCode,
-                container = container,
-                theme = theme
-            )
+            trackHeight(findViewById(slot.containerId), findViewById(slot.labelId), slot.title)
         }
 
         observeFullScreenAds()
@@ -155,7 +155,119 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Every native ad currently rendered into a variant slot.
+     *
+     * These come from `loadDetached`, which deliberately bypasses the loader's cache: the ad belongs
+     * to whoever asked for it, so this Activity is the one that has to destroy it.
+     */
+    private val variantAds = mutableListOf<NativeAd>()
+
+    /** Destroys whatever the variant slots are holding and empties them. */
+    private fun clearVariantSlots() {
+        variantAds.forEach { runCatching { it.destroy() } }
+        variantAds.clear()
+        nativeSlots.forEach { slot ->
+            findViewById<FrameLayout>(slot.containerId).removeAllViews()
+        }
+    }
+
+    /** Starts the shape-matched placeholder in every variant container and returns them by slot. */
+    private fun startVariantShimmers(theme: NativeAdTheme): Map<String, ShimmerFrameLayout?> =
+        nativeSlots.associate { slot ->
+            val container = findViewById<FrameLayout>(slot.containerId)
+            container.visibility = View.VISIBLE
+            slot.layoutCode to NativeAdShimmer.attachTo(
+                container,
+                NativeAdLayout.fromOrDefault(slot.layoutCode).layoutResId,
+                theme
+            )
+        }
+
+    private fun builderFor(
+        slot: NativeSlot,
+        shimmer: ShimmerFrameLayout?,
+        theme: NativeAdTheme
+    ): NativeAdBuilder = NativeAdBuilder.Builder(
+        NativeAdLayout.fromOrDefault(slot.layoutCode).layoutResId,
+        findViewById(slot.containerId),
+        shimmer
+    )
+        .setShowMedia(true)
+        .setShowBody(true)
+        .setShowCallToAction(true)
+        .setIconEnabled(true)
+        .setTheme(theme)
+        .build()
+
+    /**
+     * One request, rendered into all twelve shapes.
+     *
+     * Cheapest possible way to see every layout at once, and the point of the comparison with
+     * [allLoadAllShow]. **Caveat:** `NativeAdView.registerNativeAd` associates an ad with *one* view,
+     * so the twelve views here share a single ad object and only the last registration is fully live
+     * - clicks and the impression belong to it. Useful for eyeballing shapes; never do this in a
+     * shipping screen.
+     */
+    private fun oneLoadAllShow() {
+        clearVariantSlots()
+        val theme = NativeAdTheme.auto(this)
+        val shimmers = startVariantShimmers(theme)
+
+        adMobManager.nativeAdLoader.loadDetached(nativeTestAdUnitId) { ad, failure ->
+            if (ad == null) {
+                toast("One-load: ${failure?.message ?: "no fill"}")
+                nativeSlots.forEach { slot ->
+                    shimmers[slot.layoutCode].stopAndHide()
+                    findViewById<FrameLayout>(slot.containerId).visibility = View.GONE
+                }
+                return@loadDetached
+            }
+            variantAds += ad
+            nativeSlots.forEach { slot ->
+                adMobManager.nativeAdLoader.render(
+                    ad,
+                    builderFor(slot, shimmers[slot.layoutCode], theme),
+                    nativeTestAdUnitId
+                )
+            }
+            toast("One ad rendered into ${nativeSlots.size} shapes")
+        }
+    }
+
+    /**
+     * One request per shape - twelve independent ads, each owning its own view.
+     *
+     * This is what a real screen with several native placements looks like. Every slot settles on its
+     * own, so a no-fill collapses that slot alone instead of taking the others with it.
+     */
+    private fun allLoadAllShow() {
+        clearVariantSlots()
+        val theme = NativeAdTheme.auto(this)
+        val shimmers = startVariantShimmers(theme)
+
+        nativeSlots.forEach { slot ->
+            adMobManager.nativeAdLoader.loadDetached(nativeTestAdUnitId) { ad, failure ->
+                if (ad == null) {
+                    Log.d("MainActivity", "${slot.title}: ${failure?.message}")
+                    shimmers[slot.layoutCode].stopAndHide()
+                    findViewById<FrameLayout>(slot.containerId).visibility = View.GONE
+                    return@loadDetached
+                }
+                variantAds += ad
+                adMobManager.nativeAdLoader.render(
+                    ad,
+                    builderFor(slot, shimmers[slot.layoutCode], theme),
+                    nativeTestAdUnitId
+                )
+            }
+        }
+    }
+
     private fun setupButtons() {
+        findViewById<Button>(R.id.btnNativeOneLoadAllShow).setOnClickListener { oneLoadAllShow() }
+        findViewById<Button>(R.id.btnNativeAllLoadAllShow).setOnClickListener { allLoadAllShow() }
+
         findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {
             ads.loadInterstitial(interstitialTestAdUnitId)
         }
@@ -225,6 +337,12 @@ class MainActivity : AppCompatActivity() {
                 type = BannerAdType.COLLAPSIBLE_BOTTOM
             )
         }
+    }
+
+    override fun onDestroy() {
+        // loadDetached hands ownership to the caller, so nothing else will release these.
+        clearVariantSlots()
+        super.onDestroy()
     }
 
     override fun onPause() {

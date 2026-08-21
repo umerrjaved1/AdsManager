@@ -11,7 +11,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.facebook.shimmer.ShimmerFrameLayout
-import com.google.android.gms.ads.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 import com.umer_tf.ads.domain.ads.banner.BannerAdType
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdBuilder
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdLayout
@@ -199,10 +199,11 @@ fun AdViewModel.bindNativeAd(
  * ```
  *
  * One container, same as a native slot: the placeholder is inflated into it and hidden once the ad
- * arrives. Without the lifecycle forwarding this sets up, an
- * [com.google.android.gms.ads.AdView] keeps refreshing off-screen - billing impressions nobody sees -
- * and holds its Activity alive, which is why this binds an observer rather than just kicking off a
- * load.
+ * arrives. The observer this binds is what destroys the
+ * [com.google.android.libraries.ads.mobile.sdk.banner.AdView] on teardown; leaving it attached keeps
+ * its Activity alive. (Off-screen refresh is no longer part of it - the Next-Gen `AdView` suspends
+ * its own refresh while detached or hidden, which is why `pauseBanners`/`resumeBanners` are now
+ * no-ops.)
  *
  * The banner is requested once per binding. A configuration change destroys the old `AdView` along
  * with its view hierarchy, so the new [owner] correctly requests a fresh one.

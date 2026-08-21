@@ -2,633 +2,510 @@ package com.umer_tf.ads.domain.ads.interstitial
 
 import android.app.Activity
 import android.content.Context
-import androidx.annotation.LayoutRes
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.MainThread
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.interstitial.InterstitialAd
-import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
+import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
-import com.umer_tf.ads.domain.analytics.AdType
-import com.umer_tf.ads.domain.analytics.AdEvents
+import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
+import com.umer_tf.ads.domain.core.AdSlotState
+import com.umer_tf.ads.domain.core.FullScreenGate
+import com.umer_tf.ads.domain.diagnostics.AdEvent
+import com.umer_tf.ads.domain.diagnostics.AdEventLog
+import com.umer_tf.ads.domain.diagnostics.AdFormat
 import com.umer_tf.ads.domain.utils.AdController
-import com.umer_tf.ads.domain.utils.AdLoadingDialogConfig
-import com.umer_tf.ads.domain.utils.AdsLog
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_CLICKED
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_DISMISSED
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_FAILED
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_LOADED
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_SHOWN
+import com.umer_tf.ads.domain.utils.AnalyticsConstants.SHOWING_AD
+import com.umer_tf.ads.domain.utils.AnalyticsManager
 import com.umer_tf.ads.domain.utils.LoadingDialogUtil
 import com.umer_tf.ads.domain.utils.TimeManager
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
+import com.umer_tf.ads.domain.utils.onMainThread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * Interstitial loading and display, one independent slot per ad unit.
+ *
+ * Two properties of this class exist specifically to stop matched ads from going unshown:
+ *
+ * 1. **A caller giving up is not the ad giving up.** Timeouts and cancelled screens release the
+ *    *callback*; the request keeps running and its fill lands in the slot, where the next caller
+ *    for that unit picks it up for free. The previous single-field design dropped fills that
+ *    arrived a moment after a splash timeout - those requests were matched, paid for by the
+ *    advertiser, and never displayed.
+ * 2. **A second request for a unit already loading joins the first.** Two AdMob requests can only
+ *    ever produce one impression, so the second is pure loss.
+ */
 class InterstitialAdLoader(
     private val context: Context,
     private val adController: AdController
 ) : IInterstitialAdLoader {
-    private val TAG = "AdsManager_Interstitial"
-    private var interstitialAd: InterstitialAd? = null
-        set(value) {
-            field = value
-            // Stamped on assignment so every load path gets expiry tracking for free.
-            loadTimeMs = if (value == null) 0L else System.currentTimeMillis()
-        }
-    private var loadTimeMs: Long = 0L
+
+    private val TAG = "InterstitialAdLoader"
+
+    /**
+     * Google documents an interstitial as usable for about an hour. Showing a staler one risks a
+     * `SHOW_FAILED`, which costs the impression outright.
+     */
+    private val adExpiryMs = 55 * 60 * 1000L
+
+    /** One slot per ad unit. Mutated on the main thread only, so it needs no locking. */
+    private class Slot {
+        var ad: InterstitialAd? = null
+        var state: AdSlotState = AdSlotState.IDLE
+        var loadedAtElapsed: Long = 0L
+        val waiters = mutableListOf<OnSuccessListener<Boolean>>()
+    }
+
+    private val slots = mutableMapOf<String, Slot>()
+
     private var mInterstitialAdCounter: Int = 0
     private var loadingDialogUtil: LoadingDialogUtil? = null
 
-    // Recreated by destroy() instead of being cancelled for good: cancelling a CoroutineScope kills
-    // it permanently, which used to make every later timeout/paid-event launch a silent no-op.
-    private var coroutineScope = newScope()
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
-    private var showJob: Job? = null
 
-    /** A show parked by [whenResumed] until its host resumes. At most one is outstanding. */
-    private var pendingShow: PendingShow? = null
+    @JvmField
+    var adShowDelay: Long = 1000L
 
-    private class PendingShow(
-        val lifecycle: Lifecycle,
-        val observer: LifecycleEventObserver,
-        val onAborted: (String) -> Unit
-    )
+    // ---------------------------------------------------------------------------------------
+    // Slot helpers
+    // ---------------------------------------------------------------------------------------
+
+    private fun slotFor(adUnitId: String): Slot = slots.getOrPut(adUnitId) { Slot() }
+
+    private fun Slot.isExpired(): Boolean =
+        loadedAtElapsed > 0L && SystemClock.elapsedRealtime() - loadedAtElapsed > adExpiryMs
+
+    /** The displayable ad for [adUnitId], dropping it first if it has aged out. */
+    private fun readyAd(adUnitId: String): InterstitialAd? {
+        val slot = slots[adUnitId] ?: return null
+        if (slot.state != AdSlotState.READY) return null
+        if (slot.isExpired()) {
+            Log.d(TAG, "Monetization :- cached interstitial for $adUnitId expired")
+            emit(adUnitId, AdEvent.AD_EXPIRED, slot.state)
+            slot.ad = null
+            slot.state = AdSlotState.IDLE
+            slot.loadedAtElapsed = 0L
+            return null
+        }
+        return slot.ad
+    }
+
+    private fun emit(adUnitId: String, event: AdEvent, state: AdSlotState, reason: String? = null) {
+        AdEventLog.emit(AdFormat.INTERSTITIAL, adUnitId, event, state, reason)
+    }
+
+    private fun settleWaiters(slot: Slot, success: Boolean) {
+        if (slot.waiters.isEmpty()) return
+        val pending = slot.waiters.toList()
+        slot.waiters.clear()
+        pending.forEach { it.onSuccess(success) }
+    }
 
     /**
-     * Delay between the interstitial finishing loading and it being shown, i.e. how long the loading
-     * dialog remains visible. Defaults to [AdController.interstitialDialogDelayMs] (1.5s).
+     * Starts (or joins) a request for [adUnitId]. [onResult] fires exactly once.
+     *
+     * Nothing here can abandon a fill: even when every waiter has been released the load callback
+     * still writes the ad into the slot.
      */
-    var adShowDelay: Long
-        get() = adController.interstitialDialogDelayMs
-        set(value) {
-            adController.interstitialDialogDelayMs = value
+    @MainThread
+    private fun requestAd(adUnitId: String, onResult: OnSuccessListener<Boolean>?) {
+        val slot = slotFor(adUnitId)
+
+        // `onAdDismissedFullScreenContent` is not guaranteed - a process death behind the ad, or
+        // an SDK that simply never calls back, would leave this slot stuck in SHOWING and the unit
+        // could never load again for the rest of the session. The gate knows whether anything is
+        // really on screen, so trust it over the slot.
+        if (slot.state == AdSlotState.SHOWING && !FullScreenGate.isShowing()) {
+            Log.w(TAG, "Monetization :- $adUnitId stuck in SHOWING with no ad on screen - resetting")
+            slot.state = AdSlotState.IDLE
         }
 
-    /**
-     * Whether [showAd] puts the loading dialog up during [adShowDelay].
-     *
-     * On by default so a cached ad is presented exactly like a freshly loaded one. Set to false to keep
-     * the delay but drop the dialog, or set [adShowDelay] to 0 as well to show cached ads instantly.
-     */
-    @JvmField
-    var showLoadingDialog: Boolean = true
+        if (readyAd(adUnitId) != null) {
+            emit(adUnitId, AdEvent.REQUEST_SKIPPED_CACHED, slot.state)
+            onResult?.onSuccess(true)
+            return
+        }
 
-    private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        if (slot.state.isLoading) {
+            emit(adUnitId, AdEvent.REQUEST_JOINED, slot.state)
+            onResult?.let { slot.waiters.add(it) }
+            return
+        }
+
+        if (!shouldShowAd(context)) {
+            emit(adUnitId, AdEvent.LOAD_FAILURE, slot.state, "premium or offline")
+            onResult?.onSuccess(false)
+            return
+        }
+
+        slot.state = AdSlotState.LOADING
+        onResult?.let { slot.waiters.add(it) }
+        emit(adUnitId, AdEvent.REQUEST_STARTED, slot.state)
+
+        // The unit id moved onto the request, and load() no longer takes a Context - the SDK uses
+        // the one MobileAds.initialize was given.
+        InterstitialAd.load(
+            AdRequest.Builder(adUnitId).build(),
+            object : AdLoadCallback<InterstitialAd> {
+                // Next-Gen delivers both callbacks on a background thread. The slot map is
+                // main-thread-only by design ("needs no locking") and settleWaiters runs host
+                // callbacks that show ads and dismiss dialogs, so both bodies hop to Main.
+                override fun onAdLoaded(ad: InterstitialAd) = onMainThread {
+                    slot.ad = ad
+                    slot.state = AdSlotState.READY
+                    slot.loadedAtElapsed = SystemClock.elapsedRealtime()
+                    Log.d(TAG, "Monetization :- onAdLoaded ($adUnitId)")
+                    emit(adUnitId, AdEvent.LOAD_SUCCESS, slot.state)
+                    emit(adUnitId, AdEvent.READY, slot.state)
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "Interstitial_ad")
+                    settleWaiters(slot, true)
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
+                    slot.ad = null
+                    slot.state = AdSlotState.FAILED
+                    slot.loadedAtElapsed = 0L
+                    Log.d(TAG, "Monetization :- onAdFailedToLoad ($adUnitId): ${adError.message}")
+                    emit(adUnitId, AdEvent.LOAD_FAILURE, slot.state, adError.message)
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "Interstitial_ad")
+                    settleWaiters(slot, false)
+                }
+            }
+        )
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Loading
+    // ---------------------------------------------------------------------------------------
 
     @MainThread
     override fun loadAd(
         @ValidateAdUnitId adUnitId: String,
-        onAdLoaded: ((Boolean) -> Unit)?
+        onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        AdsLog.d(TAG, "InterstitialAdLoader: loadAd requested for adUnitId=$adUnitId")
         if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
-            onAdLoaded?.invoke(false)
+            onSuccessListener?.onSuccess(false)
             return
         }
-        if (isAdLoaded()) {
-            AdsLog.d(TAG, "InterstitialAdLoader: loadAd already loaded for adUnitId=$adUnitId")
-            onAdLoaded?.invoke(true)
-            return
-        }
-        if (!shouldShowAd(context)) {
-            AdsLog.e(TAG, "InterstitialAdLoader: loadAd skipped (shouldShowAd returns false)")
-            onAdLoaded?.invoke(false)
-            return
-        }
-        val adRequest = AdRequest.Builder().build()
-        InterstitialAd.load(context, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
-            override fun onAdLoaded(ad: InterstitialAd) {
-                interstitialAd = ad
-                AdsLog.d(TAG, "InterstitialAdLoader: onAdLoaded successfully for adUnitId=$adUnitId")
-                onAdLoaded?.invoke(true)
-                AdEvents.loaded(context, adUnitId, AdType.INTERSTITIAL)
-            }
-
-            override fun onAdFailedToLoad(error: LoadAdError) {
-                interstitialAd = null
-                AdsLog.e(TAG, "InterstitialAdLoader: onAdFailedToLoad error=${error.message}")
-                onAdLoaded?.invoke(false)
-                AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, error)
-            }
-        })
+        requestAd(adUnitId, onSuccessListener)
     }
 
+    /**
+     * As [loadAd], but reports `false` to the caller after [timeOut] when nothing has filled yet.
+     *
+     * The timeout bounds the *caller's* wait only. The request continues and a late fill is kept,
+     * so the next placement on this unit gets it for free instead of paying for a second one.
+     */
     @MainThread
     override fun loadAdWithTimeOut(
         @ValidateAdUnitId adUnitId: String,
         timeOut: Long,
-        onAdLoaded: ((Boolean) -> Unit)?
+        onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        AdsLog.d(TAG, "InterstitialAdLoader: loadAdWithTimeOut requested for adUnitId=$adUnitId timeout=$timeOut")
         if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
-            onAdLoaded?.invoke(false)
+            onSuccessListener?.onSuccess(false)
             return
         }
-        var mOnAdLoaded: ((Boolean) -> Unit)? = onAdLoaded
-        if (!shouldShowAd(context)) {
-            AdsLog.e(TAG, "InterstitialAdLoader: loadAdWithTimeOut skipped (shouldShowAd returns false)")
-            mOnAdLoaded?.invoke(false)
-            return
+        var settled = false
+        val once = OnSuccessListener<Boolean> { success ->
+            if (settled) return@OnSuccessListener
+            settled = true
+            onSuccessListener?.onSuccess(success)
         }
-        val adRequest = AdRequest.Builder().build()
-        InterstitialAd.load(context, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
-            override fun onAdLoaded(ad: InterstitialAd) {
-                interstitialAd = ad
-                AdsLog.d(TAG, "InterstitialAdLoader: onAdLoaded successfully for adUnitId=$adUnitId")
-                mOnAdLoaded?.invoke(true)
-                mOnAdLoaded = null
-                AdEvents.loaded(context, adUnitId, AdType.INTERSTITIAL)
-            }
-
-            override fun onAdFailedToLoad(error: LoadAdError) {
-                interstitialAd = null
-                AdsLog.e(TAG, "InterstitialAdLoader: onAdFailedToLoad error=${error.message}")
-                mOnAdLoaded?.invoke(false)
-                mOnAdLoaded = null
-                AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, error)
-            }
-        })
+        requestAd(adUnitId, once)
         job = coroutineScope.launch {
             delay(timeOut)
-            if (interstitialAd == null) {
-                AdsLog.d(TAG, "InterstitialAdLoader: loadAdWithTimeOut timed out after ${timeOut}ms")
-                mOnAdLoaded?.invoke(false)
-                mOnAdLoaded = null
-            }
+            if (settled) return@launch
+            // The caller's wait ended; the request is still running and a late fill is kept.
+            // Emitting LOAD_FAILURE here made a timeout look like a no-fill in diagnostics.
+            Log.d(TAG, "Monetization :- caller timeout after ${timeOut}ms for $adUnitId — request continues")
+            once.onSuccess(false)
         }
     }
 
+    // ---------------------------------------------------------------------------------------
+    // State queries
+    // ---------------------------------------------------------------------------------------
+
+    override fun isAdLoaded(): Boolean = slots.keys.any { readyAd(it) != null }
+
+    /** True when the cached interstitial for exactly [adUnitId] is loaded and unexpired. */
+    fun isAdLoaded(adUnitId: String): Boolean = readyAd(adUnitId) != null
+
+    /** True while a request for [adUnitId] is in flight. A second caller should join, not reload. */
+    fun isLoading(adUnitId: String): Boolean = slots[adUnitId]?.state?.isLoading == true
+
+    /** Current lifecycle state of [adUnitId]'s slot. */
+    fun stateOf(adUnitId: String): AdSlotState = slots[adUnitId]?.state ?: AdSlotState.IDLE
+
     override fun destroy() {
-        AdsLog.d(TAG, "InterstitialAdLoader: destroy called")
-        interstitialAd = null
-        job = null
-        showJob = null
-        cancelPendingShow("Loader destroyed before the host resumed")
-        coroutineScope.cancel()
-        coroutineScope = newScope()
+        slots.values.forEach { it.waiters.clear() }
+        slots.clear()
+        job?.cancel()
         mInterstitialAdCounter = 0
         loadingDialogUtil?.destroy()
         loadingDialogUtil = null
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Showing
+    // ---------------------------------------------------------------------------------------
+
     /**
-     * True when a cached ad is present and still fresh.
-     *
-     * An expired ad is discarded here rather than reported as available, so the next `loadAd` fetches a
-     * replacement instead of the user's tap landing on a show failure.
+     * Wires the callbacks and displays [ad]. Returns false when the show was refused, in which
+     * case [onSuccessListener] has already been told and the slot is untouched.
      */
-    override fun isAdLoaded(): Boolean {
-        if (interstitialAd == null) return false
-        if (isAdExpired()) {
-            AdsLog.d(TAG, "InterstitialAdLoader: cached ad expired after ${adController.interstitialAdTtlMs}ms, discarding")
-            interstitialAd = null
+    @MainThread
+    private fun show(
+        activity: Activity,
+        adUnitId: String,
+        ad: InterstitialAd,
+        onDialogDismiss: (() -> Unit)? = null,
+        onSuccessListener: OnSuccessListener<Boolean>?
+    ): Boolean {
+        val slot = slotFor(adUnitId)
+        emit(adUnitId, AdEvent.SHOW_REQUESTED, slot.state)
+
+        if (activity.isFinishing || activity.isDestroyed) {
+            emit(adUnitId, AdEvent.SHOW_REJECTED_INVALID_ACTIVITY, slot.state, activity.javaClass.simpleName)
+            onSuccessListener?.onSuccess(false)
             return false
         }
-        return true
-    }
+        if (!FullScreenGate.acquire(GATE_OWNER)) {
+            emit(adUnitId, AdEvent.SHOW_REJECTED_ALREADY_SHOWING, slot.state, FullScreenGate.currentOwner())
+            onSuccessListener?.onSuccess(false)
+            return false
+        }
 
-    private fun isAdExpired(): Boolean {
-        if (loadTimeMs == 0L) return false
-        return System.currentTimeMillis() - loadTimeMs > adController.interstitialAdTtlMs
+        var released = false
+        fun releaseGate() {
+            if (released) return
+            released = true
+            FullScreenGate.release(GATE_OWNER)
+        }
+
+        // Lifecycle and revenue now share one callback object; onAdPaid replaced the separate
+        // OnPaidEventListener. Each body hops to Main because Next-Gen fires these on a background
+        // thread and they mutate the slot, release the gate, and dismiss the host's dialog.
+        ad.adEventCallback = object : InterstitialAdEventCallback {
+            override fun onAdShowedFullScreenContent() = onMainThread {
+                job?.cancel()
+                adController.shouldShowOpenAd = false
+                // Consumed: an interstitial displays exactly once.
+                slot.ad = null
+                slot.state = AdSlotState.SHOWING
+                slot.loadedAtElapsed = 0L
+                emit(adUnitId, AdEvent.SHOW_STARTED, slot.state)
+                Log.d(TAG, "Monetization :- shown on ${activity.javaClass.simpleName}")
+                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "Interstitial_ad")
+                AnalyticsManager.getInstance(context).sendAnalytics(SHOWING_AD, "Interstitial_ad")
+            }
+
+            override fun onAdDismissedFullScreenContent() = onMainThread {
+                releaseGate()
+                TimeManager.getInstance().reset()
+                mInterstitialAdCounter = 0
+                adController.shouldShowOpenAd = true
+                slot.state = AdSlotState.IDLE
+                emit(adUnitId, AdEvent.DISMISSED, slot.state)
+                AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
+                onDialogDismiss?.invoke()
+                onSuccessListener?.onSuccess(true)
+            }
+
+            override fun onAdFailedToShowFullScreenContent(
+                fullScreenContentError: FullScreenContentError
+            ) = onMainThread {
+                releaseGate()
+                slot.ad = null
+                slot.state = AdSlotState.IDLE
+                slot.loadedAtElapsed = 0L
+                emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, fullScreenContentError.message)
+                Log.d(
+                    TAG,
+                    "Monetization :- onAdFailedToShowFullScreenContent: ${fullScreenContentError.message}"
+                )
+                onDialogDismiss?.invoke()
+                onSuccessListener?.onSuccess(false)
+            }
+
+            override fun onAdClicked() {
+                AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "Interstitial_ad")
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                coroutineScope.launch {
+                    AdsAnalytics.logAppsFlyerRevenue(
+                        ad.adUnitId,
+                        "Interstitial",
+                        value,
+                        activity.application
+                    )
+                }
+            }
+        }
+
+        // If show() throws, no FullScreenContentCallback will ever fire, so nothing else would
+        // release the gate. The stale-holder watchdog would eventually recover it, but only after
+        // five minutes of every full-screen ad in the app being refused.
+        return try {
+            ad.show(activity)
+            true
+        } catch (t: Throwable) {
+            Log.e(TAG, "Monetization :- show() threw for $adUnitId", t)
+            releaseGate()
+            slot.ad = null
+            slot.state = AdSlotState.IDLE
+            slot.loadedAtElapsed = 0L
+            emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, "show() threw: ${t.javaClass.simpleName}")
+            onSuccessListener?.onSuccess(false)
+            false
+        }
     }
 
     @MainThread
     override fun showAd(
         activity: Activity,
         adUnitId: String,
-        onAdDismissed: (() -> Unit)?,
-        onAdFailedToShow: ((String) -> Unit)?
+        onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        AdsLog.d(TAG, "InterstitialAdLoader: showAd requested for adUnitId=$adUnitId")
-        if (!shouldShowAd(context) || activity.isFinishing || activity.isDestroyed) {
-            AdsLog.e(TAG, "InterstitialAdLoader: showAd skipped (activity finishing/destroyed or shouldShowAd false)")
-            onAdFailedToShow?.invoke("Activity finishing/destroyed or shouldShowAd false")
+        if (!shouldShowAd(context)) {
+            emit(adUnitId, AdEvent.SHOW_REJECTED_NOT_READY, stateOf(adUnitId), "premium or offline")
+            onSuccessListener?.onSuccess(false)
             return
         }
-        val ad = if (isAdLoaded()) interstitialAd else null
-        if (ad != null) {
-            // A cached ad used to appear the instant this was called, so a tap could land straight on
-            // the ad. It now gets the same loading-dialog beat as a freshly loaded one.
-            presentAfterDialog(
-                activity = activity,
-                onAborted = { reason -> onAdFailedToShow?.invoke(reason) }
-            ) {
-                showCachedAd(activity, adUnitId, ad, onAdDismissed, onAdFailedToShow)
-            }
-        } else {
-            AdsLog.e(TAG, "InterstitialAdLoader: showAd failed because interstitialAd is null")
-            onAdFailedToShow?.invoke("Ad is null")
-        }
-    }
-
-    /**
-     * Shows the loading dialog for [adShowDelay], then runs [present] - unless the Activity went away
-     * in the meantime, in which case [onAborted] runs instead.
-     *
-     * Shared by [showAd] and the cached-ad path of [loadAndShowAdWithDialog] so a full-screen ad is
-     * always preceded by the same pause, whether it was cached or just fetched.
-     */
-    @MainThread
-    private fun presentAfterDialog(
-        activity: Activity,
-        showDialog: Boolean = showLoadingDialog,
-        dialogConfig: AdLoadingDialogConfig? = null,
-        onAborted: (String) -> Unit,
-        present: () -> Unit
-    ) {
-        showJob?.cancel()
-        if (adShowDelay <= 0L && !showDialog) {
-            whenResumed(activity, onAborted, present)
+        val ad = readyAd(adUnitId)
+        if (ad == null) {
+            emit(adUnitId, AdEvent.SHOW_REJECTED_NOT_READY, stateOf(adUnitId))
+            onSuccessListener?.onSuccess(false)
             return
         }
-        loadingDialogUtil?.destroy()
-        loadingDialogUtil = LoadingDialogUtil.create(
-            activity,
-            dialogConfig ?: adController.loadingDialogConfig ?: LoadingDialogUtil.globalConfig
-        )
-        if (showDialog) loadingDialogUtil?.showLoadingDialog()
-
-        showJob = coroutineScope.launch {
-            delay(adShowDelay)
-            loadingDialogUtil?.hideLoadingDialog()
-            if (activity.isFinishing || activity.isDestroyed) {
-                AdsLog.e(TAG, "InterstitialAdLoader: aborted, activity gone during ${adShowDelay}ms delay")
-                onAborted("Activity finished during the pre-show delay")
-                return@launch
-            }
-            // Backgrounding the app during the delay no longer costs the fill: the show waits for the
-            // Activity to come back rather than being fired at a paused window.
-            whenResumed(activity, onAborted, present)
-        }
-    }
-
-    /**
-     * Runs [present] once the host is actually resumed, instead of dropping the show.
-     *
-     * `InterstitialAd.show` on a paused Activity is not shown - AdMob reports it through
-     * `onAdFailedToShowFullScreenContent` and the fill is spent for nothing. That is easy to hit
-     * without doing anything wrong: the app is backgrounded during [adShowDelay], the show is
-     * triggered from a callback that arrives while a dialog or another Activity is on top, or the
-     * caller fires it from `onPause`. So a not-yet-resumed host parks the show on an ON_RESUME
-     * observer and it goes up when the user is looking at the screen again.
-     *
-     * The wait ends without showing only when the host is genuinely gone (finishing, destroyed, or an
-     * already-DESTROYED lifecycle), which reports through [onAborted] so the caller's terminal
-     * callback still fires exactly once.
-     *
-     * Falls back to the process lifecycle when [activity] is not a [LifecycleOwner] (a bare
-     * `Activity` rather than a `ComponentActivity`): app-in-foreground plus an alive Activity is the
-     * closest signal available, and it cannot wait forever on an owner that never reports.
-     */
-    @MainThread
-    private fun whenResumed(
-        activity: Activity,
-        onAborted: (String) -> Unit,
-        present: () -> Unit
-    ) {
-        cancelPendingShow("Superseded by a newer show request")
-        if (activity.isFinishing || activity.isDestroyed) {
-            AdsLog.e(TAG, "InterstitialAdLoader: not showing, activity is finishing/destroyed")
-            onAborted("Activity finishing/destroyed")
-            return
-        }
-
-        val lifecycle = (activity as? LifecycleOwner)?.lifecycle
-            ?: ProcessLifecycleOwner.get().lifecycle
-
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            present()
-            return
-        }
-        if (lifecycle.currentState == Lifecycle.State.DESTROYED) {
-            AdsLog.e(TAG, "InterstitialAdLoader: not showing, lifecycle is DESTROYED")
-            onAborted("Lifecycle destroyed")
-            return
-        }
-
-        AdsLog.d(
-            TAG,
-            "InterstitialAdLoader: host is ${lifecycle.currentState}, waiting for ON_RESUME to show"
-        )
-        val observer = object : LifecycleEventObserver {
-            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
-                when (event) {
-                    Lifecycle.Event.ON_RESUME -> {
-                        detachPendingShow()
-                        if (activity.isFinishing || activity.isDestroyed) {
-                            AdsLog.e(TAG, "InterstitialAdLoader: resumed but the activity is gone")
-                            onAborted("Activity finishing/destroyed")
-                        } else {
-                            AdsLog.d(TAG, "InterstitialAdLoader: host resumed, showing the parked ad")
-                            present()
-                        }
-                    }
-
-                    Lifecycle.Event.ON_DESTROY -> {
-                        detachPendingShow()
-                        AdsLog.e(TAG, "InterstitialAdLoader: host destroyed before it resumed")
-                        onAborted("Host destroyed before resuming")
-                    }
-
-                    else -> Unit
-                }
-            }
-        }
-        pendingShow = PendingShow(lifecycle, observer, onAborted)
-        lifecycle.addObserver(observer)
-    }
-
-    /** Unregisters the parked show without reporting anything, and returns it. */
-    @MainThread
-    private fun detachPendingShow(): PendingShow? {
-        val parked = pendingShow ?: return null
-        pendingShow = null
-        parked.lifecycle.removeObserver(parked.observer)
-        return parked
-    }
-
-    /**
-     * Drops a parked show and tells its caller why, so a show that will now never happen still ends in
-     * a terminal callback rather than leaving navigation gated on it stalled forever.
-     */
-    @MainThread
-    private fun cancelPendingShow(reason: String) {
-        detachPendingShow()?.onAborted?.invoke(reason)
-    }
-
-    @MainThread
-    private fun showCachedAd(
-        activity: Activity,
-        adUnitId: String,
-        ad: InterstitialAd,
-        onAdDismissed: (() -> Unit)?,
-        onAdFailedToShow: ((String) -> Unit)?
-    ) {
-        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-            override fun onAdDismissedFullScreenContent() {
-                AdsLog.d(TAG, "InterstitialAdLoader: onAdDismissedFullScreenContent")
-                TimeManager.getInstance().reset()
-                mInterstitialAdCounter = 0
-                adController.shouldShowOpenAd = true
-                interstitialAd = null
-                onAdDismissed?.invoke()
-                AdEvents.dismissed(context, adUnitId, AdType.INTERSTITIAL)
-            }
-
-            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                AdsLog.e(TAG, "InterstitialAdLoader: onAdFailedToShowFullScreenContent error=${adError.message}")
-                interstitialAd = null
-                AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, adError)
-                onAdFailedToShow?.invoke(adError.message)
-            }
-
-            override fun onAdShowedFullScreenContent() {
-                AdsLog.d(TAG, "InterstitialAdLoader: onAdShowedFullScreenContent")
-                job?.cancel()
-                adController.shouldShowOpenAd = false
-                // showed(), matching loadAndShowAd. This path used to report ad_shown while the
-                // other reported showing_ad for the identical event.
-                AdEvents.showed(context, adUnitId, AdType.INTERSTITIAL)
-            }
-
-            override fun onAdClicked() {
-                super.onAdClicked()
-                AdsLog.d(TAG, "InterstitialAdLoader: onAdClicked")
-                AdEvents.clicked(context, adUnitId, AdType.INTERSTITIAL)
-            }
-        }
-        ad.setOnPaidEventListener { adValue ->
-            coroutineScope.launch {
-                AdEvents.revenue(activity.application, ad.adUnitId, AdType.INTERSTITIAL, adValue)
-            }
-        }
-        ad.show(activity)
+        show(activity, adUnitId, ad, onSuccessListener = onSuccessListener)
     }
 
     override fun showAndLoadAd(
         activity: Activity,
         adUnitId: String,
-        onAdDismissed: (() -> Unit)?,
-        onAdFailedToShow: ((String) -> Unit)?
+        onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        showAd(activity, adUnitId, onAdDismissed, onAdFailedToShow)
+        showAd(activity, adUnitId, onSuccessListener)
     }
 
     override fun showAdWithTimeAndCounter(
         activity: Activity,
         adUnitId: String,
         showForcefully: Boolean,
-        onAdDismissed: (() -> Unit)?,
-        onAdFailedToShow: ((String) -> Unit)?
+        onSuccessListener: OnSuccessListener<Boolean>?
     ) {
         if (!shouldShowInterstitialAd(showForcefully)) {
-            AdsLog.e(TAG, "InterstitialAdLoader: showAdWithTimeAndCounter conditions not met")
-            onAdFailedToShow?.invoke("Counter or time condition not met")
+            onSuccessListener?.onSuccess(false)
             return
         }
-        AdsLog.d(TAG, "InterstitialAdLoader: showAdWithTimeAndCounter counter=$mInterstitialAdCounter")
-        if (isAdLoaded()) {
-            showAd(activity, adUnitId, onAdDismissed, onAdFailedToShow)
+        Log.d(
+            TAG,
+            "Monetization :- showAdWithTimeAndCounter: mInterstitialAdCounter: $mInterstitialAdCounter"
+        )
+        if (readyAd(adUnitId) != null) {
+            showAd(activity, adUnitId, onSuccessListener)
         } else {
-            AdsLog.d(TAG, "InterstitialAdLoader: showAdWithTimeAndCounter ad not loaded, loading now")
-            onAdFailedToShow?.invoke("Ad not loaded")
-            loadAd(adUnitId, null)
+            onSuccessListener?.onSuccess(false)
+            // Warm this unit so the next eligible trigger is not a cold load.
+            emit(adUnitId, AdEvent.NEXT_PRELOAD_STARTED, stateOf(adUnitId))
+            requestAd(adUnitId, null)
         }
-    }
-
-    @MainThread
-    override fun loadAndShowAd(
-        activity: Activity,
-        @ValidateAdUnitId adUnitId: String,
-        showDialog: Boolean,
-        onAdLoaded: ((Boolean) -> Unit)?,
-        onAdDismissed: (() -> Unit)?
-    ) {
-        loadAndShowAd(activity, adUnitId, showDialog, adController.loadingDialogLayoutResId, onAdLoaded, onAdDismissed)
-    }
-
-    @MainThread
-    override fun loadAndShowAd(
-        activity: Activity,
-        @ValidateAdUnitId adUnitId: String,
-        showDialog: Boolean,
-        @LayoutRes customLoadingLayoutResId: Int?,
-        onAdLoaded: ((Boolean) -> Unit)?,
-        onAdDismissed: (() -> Unit)?
-    ) {
-        val baseConfig = adController.loadingDialogConfig ?: LoadingDialogUtil.globalConfig
-        val config = customLoadingLayoutResId?.let { baseConfig.copy(layoutResId = it) }
-            ?: adController.loadingDialogLayoutResId?.let { baseConfig.copy(layoutResId = it) }
-            ?: baseConfig
-        loadAndShowAdWithDialog(activity, adUnitId, showDialog, config, onAdLoaded, onAdDismissed)
     }
 
     /**
-     * Loads an interstitial behind a loading dialog and shows it once loaded.
+     * Loads (or reuses) and then shows, optionally behind a loading dialog.
      *
-     * The dialog stays up for [adShowDelay] (1.5s by default) after the ad resolves so the ad never
-     * lands under a finger that is still mid-tap. Pass [dialogConfig] to restyle or fully replace the
-     * dialog - see [AdLoadingDialogConfig].
-     *
-     * [onAdDismissed] is invoked exactly once for every outcome that returns control to the app,
-     * including a failure to show, so navigation gated on this callback can never stall.
+     * The fresh-load branch used to hand the ad straight to a `postDelayed` block and keep no
+     * reference to it; if the Activity finished inside that window the ad was orphaned - not even
+     * cached for the next attempt. It now goes through the slot like every other path, so the
+     * worst case is a deferred impression rather than a lost one.
      */
     @MainThread
-    @JvmOverloads
-    fun loadAndShowAdWithDialog(
+    override fun loadAndShowAd(
         activity: Activity,
         @ValidateAdUnitId adUnitId: String,
-        showDialog: Boolean = true,
-        dialogConfig: AdLoadingDialogConfig? = null,
-        onAdLoaded: ((Boolean) -> Unit)? = null,
-        onAdDismissed: (() -> Unit)? = null
+        showDialog: Boolean,
+        onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd requested for adUnitId=$adUnitId")
-
-        // Guarantees onAdDismissed runs once and only once, whatever path we exit through.
-        var dismissed = false
-        val dismissOnce = {
-            if (!dismissed) {
-                dismissed = true
-                onAdDismissed?.invoke()
-            }
-        }
-
         if (!AdUnitIdValidator.validateAdUnitId(adUnitId) ||
             !shouldShowAd(context) || activity.isFinishing || activity.isDestroyed
         ) {
-            AdsLog.e(TAG, "InterstitialAdLoader: loadAndShowAd skipped (invalid id, activity finishing/destroyed, or shouldShowAd false)")
-            onAdLoaded?.invoke(false)
-            dismissOnce()
+            emit(adUnitId, AdEvent.SHOW_REJECTED_INVALID_ACTIVITY, stateOf(adUnitId))
+            onSuccessListener?.onSuccess(false)
             return
         }
 
-        // An already-cached ad is shown behind the same dialog instead of being thrown away and
-        // re-requested, which is what this used to do - wasting a paid fill on every call.
-        if (isAdLoaded()) {
-            val cached = interstitialAd
-            if (cached != null) {
-                AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd using the cached ad")
-                onAdLoaded?.invoke(true)
-                presentAfterDialog(
-                    activity = activity,
-                    showDialog = showDialog,
-                    dialogConfig = dialogConfig,
-                    onAborted = { dismissOnce() }
-                ) {
-                    showCachedAd(
-                        activity = activity,
-                        adUnitId = adUnitId,
-                        ad = cached,
-                        onAdDismissed = { dismissOnce() },
-                        onAdFailedToShow = { dismissOnce() }
-                    )
-                }
-                return
-            }
-        }
-
         kotlin.runCatching {
-            showJob?.cancel()
             loadingDialogUtil?.destroy()
-            loadingDialogUtil = LoadingDialogUtil.create(
-                activity,
-                dialogConfig ?: adController.loadingDialogConfig ?: LoadingDialogUtil.globalConfig
-            )
-            if (showDialog) {
-                loadingDialogUtil?.showLoadingDialog()
+            loadingDialogUtil = LoadingDialogUtil.create(activity)
+
+            // Terminal for this flow: hide the dialog and drop it. Holding the util (and through
+            // it a Dialog built on this Activity) in a singleton field until some future
+            // loadAndShowAd call is what kept destroyed Activities alive.
+            val hideDialog = {
+                loadingDialogUtil?.destroy()
+                loadingDialogUtil = null
+                Unit
             }
-            val adRequest = AdRequest.Builder().build()
-            InterstitialAd.load(activity, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(ad: InterstitialAd) {
-                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdLoaded successfully for adUnitId=$adUnitId")
-                    onAdLoaded?.invoke(true)
-                    AdEvents.loaded(context, adUnitId, AdType.INTERSTITIAL)
 
-                    // Coroutine rather than a bare Handler so destroy() / a second call can cancel it;
-                    // the old Handler kept a dead Activity alive and showed the ad on it.
-                    showJob = coroutineScope.launch {
-                        delay(adShowDelay)
-                        loadingDialogUtil?.hideLoadingDialog()
-                        if (activity.isFinishing || activity.isDestroyed) {
-                            AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd aborted, activity gone during ${adShowDelay}ms delay")
-                            interstitialAd = ad // keep it for the next screen instead of wasting the fill
-                            dismissOnce()
-                            return@launch
-                        }
-                        // Parked rather than fired if the host is not resumed - a show against a paused
-                        // window is reported as a show failure and the fill is gone.
-                        whenResumed(
-                            activity = activity,
-                            onAborted = {
-                                interstitialAd = ad // keep it for the next screen
-                                dismissOnce()
-                            }
-                        ) {
-                            ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                                override fun onAdDismissedFullScreenContent() {
-                                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdDismissedFullScreenContent")
-                                    TimeManager.getInstance().reset()
-                                    mInterstitialAdCounter = 0
-                                    adController.shouldShowOpenAd = true
-                                    interstitialAd = null
-                                    dismissOnce()
-                                    AdEvents.dismissed(context, adUnitId, AdType.INTERSTITIAL)
-                                }
-    
-                                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                                    interstitialAd = null
-                                    adController.shouldShowOpenAd = true
-                                    AdsLog.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdFailedToShowFullScreenContent error=${adError.message}")
-                                    // Without this the caller waits on a dismissal that never arrives.
-                                    dismissOnce()
-                                    AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, adError)
-                                }
-    
-                                override fun onAdShowedFullScreenContent() {
-                                    adController.shouldShowOpenAd = false
-                                    interstitialAd = null
-                                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdShowedFullScreenContent")
-                                    AdEvents.showed(context, adUnitId, AdType.INTERSTITIAL)
-                                }
-    
-                                override fun onAdClicked() {
-                                    super.onAdClicked()
-                                    AdsLog.d(TAG, "InterstitialAdLoader: loadAndShowAd onAdClicked")
-                                    AdEvents.clicked(context, adUnitId, AdType.INTERSTITIAL)
-                                }
-                            }
-                            ad.setOnPaidEventListener { adValue ->
-                                coroutineScope.launch {
-                                    AdEvents.revenue(activity.application, ad.adUnitId, AdType.INTERSTITIAL, adValue)
-                                }
-                            }
-                            ad.show(activity)
-                        }
+            readyAd(adUnitId)?.let { cached ->
+                if (showDialog) loadingDialogUtil?.showLoadingDialog()
+                if (!show(activity, adUnitId, cached, hideDialog, onSuccessListener)) hideDialog()
+                return@runCatching
+            }
+
+            if (showDialog) loadingDialogUtil?.showLoadingDialog()
+
+            requestAd(adUnitId) { loaded ->
+                if (loaded != true) {
+                    hideDialog()
+                    onSuccessListener?.onSuccess(false)
+                    return@requestAd
+                }
+                // The ad is safely in the slot now; this delay can only postpone the impression.
+                Handler(Looper.getMainLooper()).postDelayed({
+                    val ad = readyAd(adUnitId)
+                    if (ad == null || activity.isFinishing || activity.isDestroyed) {
+                        emit(
+                            adUnitId,
+                            AdEvent.SHOW_REJECTED_INVALID_ACTIVITY,
+                            stateOf(adUnitId),
+                            "activity gone during adShowDelay - ad kept for next request"
+                        )
+                        hideDialog()
+                        onSuccessListener?.onSuccess(false)
+                        return@postDelayed
                     }
-                }
-
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    AdsLog.e(TAG, "InterstitialAdLoader: loadAndShowAd onAdFailedToLoad error=${loadAdError.message}")
-                    loadingDialogUtil?.hideLoadingDialog()
-                    onAdLoaded?.invoke(false)
-                    dismissOnce()
-                    AdEvents.failedToLoad(context, adUnitId, AdType.INTERSTITIAL, loadAdError)
-                }
-            })
+                    if (!show(activity, adUnitId, ad, hideDialog, onSuccessListener)) hideDialog()
+                }, adShowDelay)
+            }
         }.getOrElse {
-            AdsLog.e(TAG, "InterstitialAdLoader: loadAndShowAd Exception-> $it")
-            loadingDialogUtil?.hideLoadingDialog()
-            onAdLoaded?.invoke(false)
-            dismissOnce()
+            Log.e(TAG, "Monetization :- loadAndShowInterstitialAd: Exception-> $it")
+            onSuccessListener?.onSuccess(false)
         }
     }
 
@@ -640,7 +517,14 @@ class InterstitialAdLoader(
         val adCounterMet = mInterstitialAdCounter >= adController.interstitialCounter
         val minTimeMet = elapsedTime >= adController.interstitialAdMinTime
         val maxTimeMet = elapsedTime >= adController.interstitialAdMaxTime
-        AdsLog.d(TAG, "InterstitialAdLoader: shouldShowInterstitialAd counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet")
+        Log.d(
+            TAG,
+            "Monetization :- shouldShowInterstitialAd: counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet"
+        )
         return (adCounterMet && minTimeMet) || maxTimeMet
+    }
+
+    private companion object {
+        const val GATE_OWNER = "interstitial"
     }
 }

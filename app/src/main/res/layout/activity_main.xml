@@ -258,6 +258,25 @@
             android:textColor="@android:color/black"
             android:layout_marginBottom="12dp" />
 
+        <!--
+            The two ways to fill a screen full of native slots. Nothing loads until one is tapped, so
+            whichever you press is the only thing that paid for the ads on screen.
+        -->
+        <Button
+            android:id="@+id/btnNativeOneLoadAllShow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="One Load, All Show"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnNativeAllLoadAllShow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="All Load, All Show"
+            android:textSize="12sp" />
+
         <!-- Variant 1a -->
         <TextView android:id="@+id/label_1a" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Variant 1a" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
         <FrameLayout android:id="@+id/adContainer_1a" android:layout_width="match_parent" android:layout_height="wrap_content"/>

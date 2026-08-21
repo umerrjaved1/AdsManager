@@ -6,7 +6,8 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.MainThread
 import androidx.lifecycle.AndroidViewModel
-import com.google.android.gms.ads.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.ads.banner.BannerAdType
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdBuilder
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdPool
@@ -226,7 +227,7 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
         slot.value = BannerAdUiState.Loading
         AdsLog.d(TAG, "showBanner($key): requesting $adUnitId as $type")
 
-        manager.bannerAdLoader.showBanner(activity, adUnitId, container, shimmer, type) { ok, failure ->
+        manager.bannerAdLoader.showBanner(activity, adUnitId, container, shimmer, type) { ok: Boolean, failure: AdLoadFailure? ->
             slot.value = if (ok) {
                 BannerAdUiState.Loaded(adUnitId, type.adType)
             } else {
@@ -239,13 +240,25 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Forwards the host's `onPause` to every live banner, stopping off-screen refresh. */
+    /**
+     * No-op since the Next-Gen SDK migration; kept so `bindBanner` and existing hosts still compile.
+     *
+     * The legacy `AdView` needed `pause()`/`resume()` forwarded or it kept refreshing off-screen.
+     * The Next-Gen `AdView` has neither method: it ties refreshing to its own attachment and
+     * visibility, so the SDK now does this itself.
+     */
     @MainThread
-    fun pauseBanners() = manager.bannerAdLoader.pause()
+    @Suppress("unused")
+    fun pauseBanners() {
+        // Intentionally empty - see the doc comment.
+    }
 
-    /** Forwards the host's `onResume` to every live banner. */
+    /** No-op since the Next-Gen SDK migration. See [pauseBanners]. */
     @MainThread
-    fun resumeBanners() = manager.bannerAdLoader.resume()
+    @Suppress("unused")
+    fun resumeBanners() {
+        // Intentionally empty - see the doc comment.
+    }
 
     /** Destroys the banner inside [container] and returns slot [key] to [BannerAdUiState.Idle]. */
     @MainThread
@@ -291,12 +304,17 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
         _interstitialState.value = FullScreenAdUiState.Showing(adUnitId)
         val finish = terminalOnce(INTERSTITIAL_KEY, adUnitId, AdType.INTERSTITIAL, _interstitialState)
 
+        // One callback covers both outcomes: the loader reports true once the ad is dismissed and
+        // false when it could not be shown at all (no cached ad, or a show failure). It fires on
+        // exactly one path either way, which is what terminalOnce needs.
         manager.interstitialAdLoader.showAd(
-            activity = activity,
-            adUnitId = adUnitId,
-            onAdDismissed = { finish(null) },
-            onAdFailedToShow = { reason ->
-                finish(AdLoadFailure(AdLoadFailure.CODE_LIBRARY, reason))
+            activity,
+            adUnitId,
+            OnSuccessListener { shown ->
+                finish(
+                    if (shown) null
+                    else AdLoadFailure(AdLoadFailure.CODE_LIBRARY, "Interstitial could not be shown")
+                )
             }
         )
     }
@@ -312,25 +330,19 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
         _interstitialState.value = FullScreenAdUiState.Loading
         val finish = terminalOnce(INTERSTITIAL_KEY, adUnitId, AdType.INTERSTITIAL, _interstitialState)
 
-        // Remembered so the dismissal that follows a no-fill is distinguishable from a normal close;
-        // the loader signals both through onAdDismissed.
-        var loadFailure: AdLoadFailure? = null
-
+        // The loader collapses load failure, show failure and dismissal into a single boolean, so
+        // there is no separate onAdLoaded to move the slot into Showing on the way past - the state
+        // goes Loading -> Idle, and the terminal outcome arrives as an event.
         manager.interstitialAdLoader.loadAndShowAd(
-            activity = activity,
-            adUnitId = adUnitId,
-            showDialog = showDialog,
-            onAdLoaded = { success ->
-                if (success) {
-                    _interstitialState.value = FullScreenAdUiState.Showing(adUnitId)
-                } else {
-                    loadFailure = AdLoadFailure(
-                        AdLoadFailure.CODE_LIBRARY,
-                        "Interstitial failed to load"
-                    )
-                }
-            },
-            onAdDismissed = { finish(loadFailure) }
+            activity,
+            adUnitId,
+            showDialog,
+            OnSuccessListener { shown ->
+                finish(
+                    if (shown) null
+                    else AdLoadFailure(AdLoadFailure.CODE_LIBRARY, "Interstitial failed to load or show")
+                )
+            }
         )
     }
 
@@ -347,7 +359,7 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         _rewardedState.value = FullScreenAdUiState.Loading
-        manager.rewardedAdLoader.loadAd(activity, adUnitId) { success ->
+        manager.rewardedAdLoader.loadAd(activity, adUnitId, OnSuccessListener { success ->
             _rewardedState.value = if (success) {
                 FullScreenAdUiState.Loaded(adUnitId)
             } else {
@@ -356,7 +368,7 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
                     AdLoadFailure(AdLoadFailure.CODE_LIBRARY, "Rewarded ad failed to load")
                 )
             }
-        }
+        })
     }
 
     /**
@@ -370,12 +382,15 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
         _rewardedState.value = FullScreenAdUiState.Showing(adUnitId)
         val finish = terminalOnce(REWARDED_KEY, adUnitId, AdType.REWARDED, _rewardedState)
 
+        // The loader has one callback for both: it fires with the reward flag when the ad is
+        // dismissed, and with false when there was no ad to show. Reward and dismissal therefore
+        // arrive together rather than in sequence.
         manager.rewardedAdLoader.showAd(
-            activity = activity,
-            onRewardEarned = { earned ->
+            activity,
+            OnSuccessListener { earned ->
                 if (earned) _events.trySend(AdEvent.RewardEarned(REWARDED_KEY, adUnitId))
-            },
-            onAdDismissed = { finish(null) }
+                finish(null)
+            }
         )
     }
 
@@ -391,13 +406,13 @@ class AdViewModel(application: Application) : AndroidViewModel(application) {
         val finish = terminalOnce(REWARDED_KEY, adUnitId, AdType.REWARDED, _rewardedState)
 
         manager.rewardedAdLoader.loadAndShowAd(
-            activity = activity,
-            adUnitId = adUnitId,
-            showDialog = showDialog,
-            onRewardEarned = { earned ->
+            activity,
+            adUnitId,
+            showDialog,
+            OnSuccessListener { earned ->
                 if (earned) _events.trySend(AdEvent.RewardEarned(REWARDED_KEY, adUnitId))
-            },
-            onAdDismissed = { finish(null) }
+                finish(null)
+            }
         )
     }
 

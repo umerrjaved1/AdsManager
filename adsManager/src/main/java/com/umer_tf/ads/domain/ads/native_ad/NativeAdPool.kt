@@ -2,18 +2,21 @@ package com.umer_tf.ads.domain.ads.native_ad
 
 import android.content.Context
 import androidx.annotation.MainThread
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdLoader
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.VideoOptions
-import com.google.android.gms.ads.nativead.NativeAd
-import com.google.android.gms.ads.nativead.NativeAdOptions
+import com.google.android.libraries.ads.mobile.sdk.common.AdChoicesPlacement
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.VideoOptions
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoader
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoaderCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.analytics.AdType
 import com.umer_tf.ads.domain.analytics.AdEvents
 import com.umer_tf.ads.domain.utils.AdsLog
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
+import com.umer_tf.ads.domain.utils.onMainThread
 
 /**
  * A small pool of native ads for lists - RecyclerView, ViewPager, anything that recycles.
@@ -40,13 +43,17 @@ import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
  * @param size How many distinct ads to keep. Google's guidance is a handful at most - more requests do
  *   not mean more revenue, and unshown ads still count against your request-to-impression ratio.
  * @param ttlMs Freshness window per ad; expired ads are destroyed and refetched.
+ * @param startVideoMuted Whether video creatives start muted. True by default, matching
+ *   [NativeAd.startVideoMuted] - a row that starts playing audio as it scrolls into view is the
+ *   worst version of this in a list.
  */
 class NativeAdPool @JvmOverloads constructor(
     private val context: Context,
     private val adUnitId: String,
     private val size: Int = 3,
     private val ttlMs: Long = 60 * 60 * 1000L,
-    private val adChoicesPlacement: Int = NativeAdOptions.ADCHOICES_TOP_RIGHT
+    private val adChoicesPlacement: AdChoicesPlacement = AdChoicesPlacement.TOP_RIGHT,
+    private val startVideoMuted: Boolean = true
 ) {
 
     private val TAG = "AdsManager_NativePool"
@@ -71,7 +78,12 @@ class NativeAdPool @JvmOverloads constructor(
     @MainThread
     fun preload() {
         if (destroyed) return
-        if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) return
+        // A false return means "skip": strictMode has already thrown if the host wanted a malformed
+        // id to be fatal. Here the row simply falls back to its placeholder.
+        if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
+            AdsLog.e(TAG, "preload skipped: malformed ad unit id \"$adUnitId\"")
+            return
+        }
         if (!shouldShowAd(context)) {
             AdsLog.d(TAG, "preload skipped (shouldShowAd false)")
             return
@@ -153,49 +165,56 @@ class NativeAdPool @JvmOverloads constructor(
 
     private fun requestOne() {
         inFlight++
-        val loader = AdLoader.Builder(context, adUnitId)
-            .forNativeAd { nativeAd ->
+
+        // Video options and AdChoices placement moved from NativeAdOptions onto the request, and the
+        // request now has to declare which native formats it accepts.
+        val request = NativeAdRequest.Builder(adUnitId, listOf(NativeAd.NativeAdType.NATIVE))
+            .setVideoOptions(VideoOptions.Builder().setStartMuted(startVideoMuted).build())
+            .setAdChoicesPlacement(adChoicesPlacement)
+            .build()
+
+        // NativeAdLoader is static: no AdLoader.Builder, no Context. onNativeAdLoaded replaces
+        // forNativeAd (the ad), onAdLoadingCompleted replaces AdListener.onAdLoaded (the request
+        // finishing). Impression and click moved off the loader onto the ad's own event callback,
+        // so they are wired per ad below.
+        NativeAdLoader.load(request, object : NativeAdLoaderCallback {
+            // Next-Gen delivers every callback on a background thread; the pool's collections are
+            // documented main-thread-only, so each body hops before touching them.
+            override fun onNativeAdLoaded(nativeAd: NativeAd) = onMainThread {
+                nativeAd.adEventCallback = object : NativeAdEventCallback {
+                    override fun onAdImpression() {
+                        AdEvents.impression(context, adUnitId, AdType.NATIVE)
+                    }
+
+                    override fun onAdClicked() {
+                        AdEvents.clicked(context, adUnitId, AdType.NATIVE)
+                    }
+
+                    override fun onAdPaid(value: AdValue) {
+                        AdEvents.revenue(context.applicationContext, adUnitId, AdType.NATIVE, value)
+                    }
+                }
                 if (destroyed) {
                     // The pool went away mid-request; do not leak the ad.
                     nativeAd.destroy()
                 } else {
                     available.addLast(Entry(nativeAd, System.currentTimeMillis()))
-                    nativeAd.setOnPaidEventListener { adValue ->
-                        AdEvents.revenue(context.applicationContext, adUnitId, AdType.NATIVE, adValue)
-                    }
                 }
             }
-            .withNativeAdOptions(
-                NativeAdOptions.Builder()
-                    .setVideoOptions(VideoOptions.Builder().setStartMuted(true).build())
-                    .setAdChoicesPlacement(adChoicesPlacement)
-                    .build()
-            )
-            .withAdListener(object : AdListener() {
-                override fun onAdLoaded() {
-                    inFlight--
-                    AdsLog.d(TAG, "onAdLoaded, pool now holds $loadedCount")
-                    AdEvents.loaded(context, adUnitId, AdType.NATIVE)
-                }
 
-                override fun onAdFailedToLoad(error: LoadAdError) {
-                    inFlight--
-                    // No retry here on purpose: a failing unit would otherwise spin forever. The next
-                    // acquire() triggers a fresh preload attempt.
-                    AdsLog.e(TAG, "onAdFailedToLoad error=${error.message}")
-                    AdEvents.failedToLoad(context, adUnitId, AdType.NATIVE, error)
-                }
+            override fun onAdLoadingCompleted() = onMainThread {
+                inFlight--
+                AdsLog.d(TAG, "onAdLoadingCompleted, pool now holds $loadedCount")
+                AdEvents.loaded(context, adUnitId, AdType.NATIVE)
+            }
 
-                override fun onAdImpression() {
-                    AdEvents.impression(context, adUnitId, AdType.NATIVE)
-                }
-
-                override fun onAdClicked() {
-                    AdEvents.clicked(context, adUnitId, AdType.NATIVE)
-                }
-            })
-            .build()
-
-        loader.loadAd(AdRequest.Builder().build())
+            override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
+                inFlight--
+                // No retry here on purpose: a failing unit would otherwise spin forever. The next
+                // acquire() triggers a fresh preload attempt.
+                AdsLog.e(TAG, "onAdFailedToLoad error=${adError.message}")
+                AdEvents.failedToLoad(context, adUnitId, AdType.NATIVE, adError)
+            }
+        })
     }
 }

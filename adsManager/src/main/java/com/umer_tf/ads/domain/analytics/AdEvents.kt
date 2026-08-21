@@ -2,9 +2,9 @@ package com.umer_tf.ads.domain.analytics
 
 import android.content.Context
 import android.os.Bundle
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdValue
-import com.google.android.gms.ads.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.umer_tf.ads.domain.utils.AdsLog
 import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_CLICKED
@@ -77,7 +77,8 @@ object AdEvents {
             context,
             adUnitId,
             adType,
-            AdLoadFailure(error.code, error.message.orEmpty(), error.domain)
+            // No domain since the Next-Gen migration - the SDK dropped it from LoadAdError.
+            AdLoadFailure(error.code.value, error.message)
         )
     }
 
@@ -86,13 +87,13 @@ object AdEvents {
      * the same callback because the outcome for the app is identical: no ad was displayed.
      */
     @JvmStatic
-    fun failedToLoad(context: Context, adUnitId: String, adType: AdType, error: AdError) {
-        failedToLoad(
-            context,
-            adUnitId,
-            adType,
-            AdLoadFailure(error.code, error.message.orEmpty(), error.domain)
-        )
+    fun failedToShow(
+        context: Context,
+        adUnitId: String,
+        adType: AdType,
+        error: FullScreenContentError
+    ) {
+        failedToLoad(context, adUnitId, adType, AdLoadFailure(error.code.value, error.message))
     }
 
     /**

@@ -2,10 +2,29 @@ package com.umer_tf.ads.domain.ads.native_ad
 
 import android.widget.FrameLayout
 import com.facebook.shimmer.ShimmerFrameLayout
-import com.google.android.gms.ads.nativead.NativeAdOptions
 
 /**
  * NativeAdBuilder is a builder class for constructing native ad configurations.
+ *
+ * @property adUnitId The ad unit ID.
+ * @property layout The layout resource ID for the ad.
+ * @property frameLayout The FrameLayout to hold the ad view.
+ * @property shimmerFrameLayout The ShimmerFrameLayout for loading animation.
+ * @property iconEnabled Boolean indicating if the icon is enabled.
+ * @property showMedia Boolean indicating if the media content is shown.
+ * @property showRating Boolean indicating if the rating is shown.
+ * @property showPrice Boolean indicating if the price is shown.
+ * @property showStore Boolean indicating if the store information is shown.
+ * @property showAdvertiser Boolean indicating if the advertiser information is shown.
+ * @property showHeadline Boolean indicating if the headline is shown.
+ * @property showBody Boolean indicating if the body text is shown.
+ * @property showCallToAction Boolean indicating if the call to action is shown.
+ * @property showAdChoices Boolean indicating if the ad choices are shown.
+ * @property adBgColor The background color of the ad.
+ * @property ctaBgColor The background color of the call to action button.
+ * @property ctaTextColor The text color of the call to action button.
+ * @property adTitleColor The color of the ad title.
+ * @property adBodyColor The color of the ad body text.
  */
 class NativeAdBuilder private constructor(
     val layout: Int,
@@ -24,18 +43,20 @@ class NativeAdBuilder private constructor(
     val adBgColor: String?,
     val ctaBgColor: String?,
     val ctaTextColor: String?,
-    val ctaRadius: Int = 16,
+    val ctaRadius: Int = 64,
     val adTitleColor: String?,
     val adBodyColor: String?,
     val showBgStroke: Boolean = true,
     val strokeColor: String? = null,
     val strokeWidth: Int = 1,
-    val shimmerBaseColor: String? = null,
-    val shimmerHighlightColor: String? = null,
-    val adCornerRadius: Int = 12,
-    val badgeTextColor: String? = null,
-    val badgeStrokeColor: String? = null,
-    val adChoicesPlacement: Int = NativeAdOptions.ADCHOICES_TOP_RIGHT
+    /**
+     * The [NativeAdTheme] this builder was configured from, when [Builder.setTheme] was used.
+     *
+     * The individual colour properties above are the source of truth for rendering - `setTheme`
+     * copies into them - so this is only kept for the settings that have no individual property:
+     * the card corner radius, the "Ad" badge colours and the shimmer palette.
+     */
+    val theme: NativeAdTheme? = null,
 ) {
 
     /**
@@ -51,106 +72,195 @@ class NativeAdBuilder private constructor(
         private var showHeadline: Boolean = true
         private var showBody: Boolean = false
         private var showCallToAction: Boolean = true
-        // AdMob policy: the AdChoices overlay must be present. Defaulted on so an integrator cannot
-        // ship a non-compliant ad by simply not calling the setter.
-        private var showAdChoices: Boolean = true
-        private var adChoicesPlacement: Int = NativeAdOptions.ADCHOICES_TOP_RIGHT
+        private var showAdChoices: Boolean = false
         private var adBgColor: String? = null
         private var ctaBgColor: String? = null
         private var ctaTextColor: String? = null
-        private var ctaRadius: Int = 16
+        private var ctaRadius: Int = 64
         private var adTitleColor: String? = null
         private var adBodyColor: String? = null
         private var showBgStroke: Boolean = true
         private var strokeColor: String? = null
         private var strokeWidth: Int = 1
-        private var shimmerBaseColor: String? = null
-        private var shimmerHighlightColor: String? = null
-        private var adCornerRadius: Int = 12
-        private var badgeTextColor: String? = null
-        private var badgeStrokeColor: String? = null
-
-        fun setLayout(layout: Int) = apply { this.layout = layout }
-        fun setFrameLayout(frameLayout: FrameLayout?) = apply { this.frameLayout = frameLayout }
-        fun setShimmerFrameLayout(shimmerFrameLayout: ShimmerFrameLayout?) = apply { this.shimmerFrameLayout = shimmerFrameLayout }
-        fun setIconEnabled(iconEnabled: Boolean) = apply { this.iconEnabled = iconEnabled }
-        fun setShowMedia(showMedia: Boolean) = apply { this.showMedia = showMedia }
-        fun setShowRating(showRating: Boolean) = apply { this.showRating = showRating }
-        fun setShowPrice(showPrice: Boolean) = apply { this.showPrice = showPrice }
-        fun setShowStore(showStore: Boolean) = apply { this.showStore = showStore }
-        fun setShowAdvertiser(showAdvertiser: Boolean) = apply { this.showAdvertiser = showAdvertiser }
-        fun setShowHeadline(showHeadline: Boolean) = apply { this.showHeadline = showHeadline }
-        fun setShowBody(showBody: Boolean) = apply { this.showBody = showBody }
-        fun setShowCallToAction(showCallToAction: Boolean) = apply { this.showCallToAction = showCallToAction }
-        fun setShowAdChoices(showAdChoices: Boolean) = apply { this.showAdChoices = showAdChoices }
-        fun setAdBgColor(adBgColor: String?) = apply { this.adBgColor = adBgColor }
-        fun setCtaBgColor(ctaBgColor: String?) = apply { this.ctaBgColor = ctaBgColor }
-        fun setCtaTextColor(ctaTextColor: String?) = apply { this.ctaTextColor = ctaTextColor }
-        fun setCtaRadius(ctaRadius: Int) = apply { this.ctaRadius = ctaRadius }
-        fun setAdTitleColor(adTitleColor: String?) = apply { this.adTitleColor = adTitleColor }
-        fun setAdBodyColor(adBodyColor: String?) = apply { this.adBodyColor = adBodyColor }
-        fun setShowBgStroke(showBgStroke: Boolean) = apply { this.showBgStroke = showBgStroke }
-        fun setStrokeColor(strokeColor: String?) = apply { this.strokeColor = strokeColor }
-        fun setStrokeWidth(strokeWidth: Int) = apply { this.strokeWidth = strokeWidth }
-
-        /** Corner radius (dp) of the ad card background. */
-        fun setAdCornerRadius(adCornerRadius: Int) = apply { this.adCornerRadius = adCornerRadius }
-
-        /** Colours of the "Ad" attribution label. Visibility is not configurable, by policy. */
-        fun setBadgeColors(textColor: String?, strokeColor: String? = textColor) = apply {
-            this.badgeTextColor = textColor
-            this.badgeStrokeColor = strokeColor
-        }
+        private var theme: NativeAdTheme? = null
 
         /**
-         * Where the AdChoices overlay is drawn. One of the `NativeAdOptions.ADCHOICES_*` constants.
-         */
-        fun setAdChoicesPlacement(placement: Int) = apply { this.adChoicesPlacement = placement }
-
-        /**
-         * Customizes shimmer colors specifically for this native ad container.
+         * Applies a whole [NativeAdTheme] at once instead of setting each colour by hand.
          *
-         * Only the shimmer is affected - this no longer drags the rest of the ad into the light
-         * palette as a side effect, which used to wash out dark-themed ads.
-         */
-        fun setShimmerColor(baseColor: String?, highlightColor: String?) = apply {
-            this.shimmerBaseColor = baseColor
-            this.shimmerHighlightColor = highlightColor
-            if (baseColor != null && highlightColor != null) {
-                NativeAdTheme(
-                    adBgColor = adBgColor ?: "#FFFFFF",
-                    adTitleColor = adTitleColor ?: "#111827",
-                    adBodyColor = adBodyColor ?: "#4B5563",
-                    ctaBgColor = ctaBgColor ?: "#2563EB",
-                    ctaTextColor = ctaTextColor ?: "#FFFFFF",
-                    shimmerBaseColor = baseColor,
-                    shimmerHighlightColor = highlightColor
-                ).applyShimmerTo(shimmerFrameLayout)
-            }
-        }
-
-        /**
-         * Applies a NativeAdTheme (Light, Dark, or Auto) programmatically, including shimmer colors.
+         * The theme is expanded into the individual colour settings immediately, so any
+         * `setAdBgColor`/`setCtaBgColor`/… call made **after** this one still wins - which is what
+         * makes "theme plus one override" work without a second theme object.
          */
         fun setTheme(theme: NativeAdTheme) = apply {
-            this.adBgColor = theme.adBgColor
-            this.adTitleColor = theme.adTitleColor
-            this.adBodyColor = theme.adBodyColor
-            this.ctaBgColor = theme.ctaBgColor
-            this.ctaTextColor = theme.ctaTextColor
-            this.strokeColor = theme.strokeColor
-            this.showBgStroke = theme.showBgStroke
-            this.strokeWidth = theme.strokeWidth
-            this.ctaRadius = theme.ctaRadius
-            this.shimmerBaseColor = theme.shimmerBaseColor
-            this.shimmerHighlightColor = theme.shimmerHighlightColor
-            this.adCornerRadius = theme.adCornerRadius
-            this.badgeTextColor = theme.badgeTextColor
-            this.badgeStrokeColor = theme.badgeStrokeColor
-
-            theme.applyShimmerTo(shimmerFrameLayout)
+            this.theme = theme
+            adBgColor = theme.adBgColor
+            adTitleColor = theme.adTitleColor
+            adBodyColor = theme.adBodyColor
+            ctaBgColor = theme.ctaBgColor
+            ctaTextColor = theme.ctaTextColor
+            strokeColor = theme.strokeColor
+            showBgStroke = theme.showBgStroke
+            strokeWidth = theme.strokeWidth
+            ctaRadius = theme.ctaRadius
         }
 
+        /**
+         * Sets the layout resource ID.
+         *
+         * @param layout The layout resource ID.
+         * @return The Builder instance.
+         */
+        fun setLayout(layout: Int) = apply { this.layout = layout }
+
+        /**
+         * Sets the FrameLayout to hold the ad view.
+         *
+         * @param frameLayout The FrameLayout.
+         * @return The Builder instance.
+         */
+        fun setFrameLayout(frameLayout: FrameLayout?) = apply { this.frameLayout = frameLayout }
+
+        /**
+         * Sets the ShimmerFrameLayout for loading animation.
+         *
+         * @param shimmerFrameLayout The ShimmerFrameLayout.
+         * @return The Builder instance.
+         */
+        fun setShimmerFrameLayout(shimmerFrameLayout: ShimmerFrameLayout?) = apply { this.shimmerFrameLayout = shimmerFrameLayout }
+
+        /**
+         * Sets whether the icon is enabled.
+         *
+         * @param iconEnabled Boolean indicating if the icon is enabled.
+         * @return The Builder instance.
+         */
+        fun setIconEnabled(iconEnabled: Boolean) = apply { this.iconEnabled = iconEnabled }
+
+        /**
+         * Sets whether the media content is shown.
+         *
+         * @param showMedia Boolean indicating if the media content is shown.
+         * @return The Builder instance.
+         */
+        fun setShowMedia(showMedia: Boolean) = apply { this.showMedia = showMedia }
+
+        /**
+         * Sets whether the rating is shown.
+         *
+         * @param showRating Boolean indicating if the rating is shown.
+         * @return The Builder instance.
+         */
+        fun setShowRating(showRating: Boolean) = apply { this.showRating = showRating }
+
+        /**
+         * Sets whether the price is shown.
+         *
+         * @param showPrice Boolean indicating if the price is shown.
+         * @return The Builder instance.
+         */
+        fun setShowPrice(showPrice: Boolean) = apply { this.showPrice = showPrice }
+
+        /**
+         * Sets whether the store information is shown.
+         *
+         * @param showStore Boolean indicating if the store information is shown.
+         * @return The Builder instance.
+         */
+        fun setShowStore(showStore: Boolean) = apply { this.showStore = showStore }
+
+        /**
+         * Sets whether the advertiser information is shown.
+         *
+         * @param showAdvertiser Boolean indicating if the advertiser information is shown.
+         * @return The Builder instance.
+         */
+        fun setShowAdvertiser(showAdvertiser: Boolean) = apply { this.showAdvertiser = showAdvertiser }
+
+        /**
+         * Sets whether the headline is shown.
+         *
+         * @param showHeadline Boolean indicating if the headline is shown.
+         * @return The Builder instance.
+         */
+        fun setShowHeadline(showHeadline: Boolean) = apply { this.showHeadline = showHeadline }
+
+        /**
+         * Sets whether the body text is shown.
+         *
+         * @param showBody Boolean indicating if the body text is shown.
+         * @return The Builder instance.
+         */
+        fun setShowBody(showBody: Boolean) = apply { this.showBody = showBody }
+
+        /**
+         * Sets whether the call to action is shown.
+         *
+         * @param showCallToAction Boolean indicating if the call to action is shown.
+         * @return The Builder instance.
+         */
+        fun setShowCallToAction(showCallToAction: Boolean) = apply { this.showCallToAction = showCallToAction }
+
+        /**
+         * Sets whether the ad choices are shown.
+         *
+         * @param showAdChoices Boolean indicating if the ad choices are shown.
+         * @return The Builder instance.
+         */
+        fun setShowAdChoices(showAdChoices: Boolean) = apply { this.showAdChoices = showAdChoices }
+
+        /**
+         * Sets the background color of the ad.
+         *
+         * @param adBgColor The background color of the ad.
+         * @return The Builder instance.
+         */
+        fun setAdBgColor(adBgColor: String?) = apply { this.adBgColor = adBgColor }
+
+        /**
+         * Sets the background color of the call to action button.
+         *
+         * @param ctaBgColor The background color of the call to action button.
+         * @return The Builder instance.
+         */
+        fun setCtaBgColor(ctaBgColor: String?) = apply { this.ctaBgColor = ctaBgColor }
+
+        /**
+         * Sets the text color of the call to action button.
+         *
+         * @param ctaTextColor The text color of the call to action button.
+         * @return The Builder instance.
+         */
+        fun setCtaTextColor(ctaTextColor: String?) = apply { this.ctaTextColor = ctaTextColor }
+
+        fun setCtaRadius(ctaRadius: Int) = apply { this.ctaRadius = ctaRadius }
+
+        /**
+         * Sets the color of the ad title.
+         *
+         * @param adTitleColor The color of the ad title.
+         * @return The Builder instance.
+         */
+        fun setAdTitleColor(adTitleColor: String?) = apply { this.adTitleColor = adTitleColor }
+
+        /**
+         * Sets the color of the ad body text.
+         *
+         * @param adBodyColor The color of the ad body text.
+         * @return The Builder instance.
+         */
+        fun setAdBodyColor(adBodyColor: String?) = apply { this.adBodyColor = adBodyColor }
+
+        fun setShowBgStroke(showBgStroke: Boolean) = apply { this.showBgStroke = showBgStroke }
+
+        fun setStrokeColor(strokeColor: String?) = apply { this.strokeColor = strokeColor }
+
+        fun setStrokeWidth(strokeWidth: Int) = apply { this.strokeWidth = strokeWidth }
+
+        /**
+         * Builds and returns a NativeAdBuilder instance.
+         *
+         * @return A new NativeAdBuilder instance.
+         */
         fun build(): NativeAdBuilder {
             return NativeAdBuilder(
                 layout,
@@ -175,12 +285,7 @@ class NativeAdBuilder private constructor(
                 showBgStroke,
                 strokeColor,
                 strokeWidth,
-                shimmerBaseColor,
-                shimmerHighlightColor,
-                adCornerRadius,
-                badgeTextColor,
-                badgeStrokeColor,
-                adChoicesPlacement
+                theme
             )
         }
     }

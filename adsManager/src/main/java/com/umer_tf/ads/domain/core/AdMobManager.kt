@@ -2,25 +2,23 @@ package com.umer_tf.ads.domain.core
 
 import android.app.Activity
 import android.app.Application
-import com.google.android.gms.ads.MobileAds
+import android.content.pm.PackageManager
+import android.util.Log
+import com.google.android.libraries.ads.mobile.sdk.MobileAds
+import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
 import com.umer_tf.ads.domain.ads.app_open.AppOpenAdLoader
 import com.umer_tf.ads.domain.ads.banner.BannerAdLoader
 import com.umer_tf.ads.domain.ads.interstitial.InterstitialAdLoader
 import com.umer_tf.ads.domain.ads.native_ad.NativeAd
 import com.umer_tf.ads.domain.ads.rewarded.RewardedAdLoader
-import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
-import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
-import androidx.annotation.LayoutRes
-import com.umer_tf.ads.domain.consent.AdsConsentGate
-import com.umer_tf.ads.domain.consent.AdsConsentManager
 import com.umer_tf.ads.domain.analytics.AdEventListener
 import com.umer_tf.ads.domain.analytics.AdEvents
-import com.umer_tf.ads.domain.analytics.AdType
+import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
+import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
+import com.umer_tf.ads.domain.consent.AdsConsentGate
+import com.umer_tf.ads.domain.consent.AdsConsentManager
 import com.umer_tf.ads.domain.utils.AdController
-import com.umer_tf.ads.domain.utils.AdLoadingDialogConfig
 import com.umer_tf.ads.domain.utils.AdsEnvironment
-import com.umer_tf.ads.domain.utils.AdsLog
-import com.umer_tf.ads.domain.utils.LoadingDialogUtil
 import com.umer_tf.ads.domain.utils.TimeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +34,12 @@ open class AdMobManager(
 ) {
     private val adController = AdController()
 
+    init {
+        // Registered here rather than lazily with the app-open loader so the reference is valid
+        // even for hosts that never touch app-open ads.
+        ForegroundActivityTracker.install(application)
+    }
+
     @JvmField
     val appOpenAdLoader = AppOpenAdLoader(application, adController)
 
@@ -46,95 +50,30 @@ open class AdMobManager(
     val interstitialAdLoader = InterstitialAdLoader(application, adController)
 
     @JvmField
-    val nativeAdLoader = NativeAd(application).also { it.adTtlMs = adController.nativeAdTtlMs }
+    val nativeAdLoader = NativeAd(application)
 
     @JvmField
     val rewardedAdLoader = RewardedAdLoader(application, adController)
 
-    private var isInitialized = false
-    private var requestConfig: AdsRequestConfig? = null
-
     /**
-     * Consent manager backed by Google's User Messaging Platform.
-     *
-     * Prefer [gatherConsent] over driving this directly - it is what publishes the result to
-     * [AdsConsentGate], which is what actually gates ad requests.
+     * UMP consent, created on first use because it needs no `Activity` to construct but is useless
+     * to a host that never runs a consent flow.
      */
     val consentManager: AdsConsentManager by lazy { AdsConsentManager(application) }
 
-    /**
-     * Initializes the AdMob SDK and starts the interstitial frequency-capping clock.
-     *
-     * This must be called once (typically from `Application.onCreate`) before requesting ads. Nothing
-     * else in the library initializes [MobileAds], so skipping it leaves every request unfilled.
-     *
-     * If you target the EEA, call [gatherConsent] first (or instead - it initializes for you), so that
-     * no request is made before the user has answered.
-     *
-     * @param onInitializationComplete Invoked on the main thread once initialization has finished.
-     */
-    @JvmOverloads
-    fun initialize(onInitializationComplete: (() -> Unit)? = null) {
-        // Set synchronously, before the async SDK start, purely so warnIfNotInitialized can tell
-        // "you forgot to call this" apart from "it is still starting up".
-        initializeCalled = true
-        TimeManager.getInstance().start()
-        if (isInitialized) {
-            onInitializationComplete?.invoke()
-            return
-        }
-        CoroutineScope(Dispatchers.IO).launch {
-            // Audience tagging must be in place before the first request, not after it.
-            requestConfig?.applyToSdk()
-            MobileAds.initialize(application) { initializationStatus ->
-                AdsLog.d(TAG, "Monetization:- AdMob initialized: $initializationStatus")
-                isInitialized = true
-                CoroutineScope(Dispatchers.Main).launch {
-                    onInitializationComplete?.invoke()
-                }
-            }
-        }
-    }
+    private var isInitialized = false
+
+    /** Overrides the app id read from the host manifest. Must be set before [initialize]. */
+    private var applicationIdOverride: String? = null
+
+    /** Audience tagging, content rating and test devices. Folded into [initialize]'s config. */
+    private var requestConfig: AdsRequestConfig? = null
 
     /**
-     * Gathers user consent, then initializes the AdMob SDK - the correct order for EEA traffic.
+     * Registers the app's single observer for every ad event, for every format.
      *
-     * Until this completes, [com.umer_tf.ads.domain.utils.Utilities.shouldShowAd] reports false and
-     * every loader short-circuits, so no request can escape ahead of the user's decision. Call it from
-     * your launcher/splash Activity:
-     *
-     * ```kotlin
-     * AdMobManager.getInstance(application).gatherConsent(this) { canRequestAds ->
-     *     if (canRequestAds) startLoadingAds()
-     * }
-     * ```
-     *
-     * Safe to call on every launch: UMP only shows a form when one is actually required.
-     *
-     * @param activity Activity used to host the consent form.
-     * @param isTest Forces the EEA debug geography so the form can be exercised outside Europe.
-     * @param onConsentComplete Invoked with `canRequestAds` once consent settles and the SDK is up.
-     */
-    @JvmOverloads
-    fun gatherConsent(
-        activity: Activity,
-        isTest: Boolean = false,
-        onConsentComplete: ((Boolean) -> Unit)? = null
-    ) {
-        consentManager.gatherConsent(activity, isTest) { canRequestAds ->
-            AdsLog.d(TAG, "gatherConsent settled: canRequestAds=$canRequestAds")
-            initialize { onConsentComplete?.invoke(canRequestAds) }
-        }
-    }
-
-    /**
-     * Registers the single observer for every ad event across every format - load, impression, click,
-     * failure, show, dismiss and revenue - each carrying the ad unit id and [AdType].
-     *
-     * This is the hook for ad-revenue attribution (AppsFlyer, Adjust, Singular, your own backend) and
-     * for any custom ad analytics.
-     *
-     * @see AdEventListener
+     * Pass null to clear. See [AdEventListener] for what each callback means and, in particular,
+     * which one counts as an impression.
      */
     fun setAdEventListener(listener: AdEventListener?): AdMobManager {
         AdEvents.setListener(listener)
@@ -142,17 +81,138 @@ open class AdMobManager(
     }
 
     /**
-     * Sets the global AdMob request configuration - COPPA / under-age tagging, max content rating and
-     * test devices. Must be set before [initialize].
+     * Sets global request configuration: COPPA / under-age tagging, max content rating and test
+     * devices.
      *
-     * @see AdsRequestConfig
+     * Only has an effect before [initialize]. The Next-Gen SDK has no
+     * `MobileAds.setRequestConfiguration()` - the configuration is part of `InitializationConfig`,
+     * so it can only be supplied while the SDK is starting.
      */
-    fun setRequestConfig(config: AdsRequestConfig): AdMobManager {
+    fun setRequestConfig(config: AdsRequestConfig?): AdMobManager {
+        if (isInitialized) {
+            Log.e(
+                TAG,
+                "Monetization:- setRequestConfig() after initialize() is ignored: the Next-Gen SDK " +
+                    "takes RequestConfiguration as part of InitializationConfig."
+            )
+            return this
+        }
         requestConfig = config
-        // Applying immediately as well covers callers who configure after initialize().
-        if (isInitialized) config.applyToSdk()
         return this
     }
+
+    /**
+     * Runs the UMP consent flow and switches the process-wide [AdsConsentGate] on.
+     *
+     * Until this is called the gate stays unenforced, because `canRequestAds()` is false before
+     * UMP's update completes and gating on it unconditionally would mean zero ads for a host with
+     * no consent flow at all.
+     *
+     * @param onConsentGathered Invoked once the flow finishes, with whether ads may now be
+     *   requested. Ad requests made before then are allowed through unenforced.
+     */
+    @JvmOverloads
+    @Suppress("DEPRECATION")
+    fun gatherConsent(
+        activity: Activity,
+        isTest: Boolean = false,
+        onConsentGathered: ((Boolean) -> Unit)? = null
+    ) {
+        // The deprecated one-shot form on purpose: it does the info update and the form in a single
+        // call with a single completion, which is what a gate needs. The preLoad/show pair has no
+        // way to report "the update finished" to a caller that must then flip the gate.
+        consentManager.showGDPRConsent(activity, isTest) { formError ->
+            if (formError != null) {
+                Log.e(TAG, "Monetization:- consent form error: ${formError.message}")
+            }
+            val canRequestAds = consentManager.canRequestAds
+            AdsConsentGate.update(canRequestAds)
+            onConsentGathered?.invoke(canRequestAds)
+        }
+    }
+
+    /**
+     * Sets the AdMob application id explicitly, for hosts that resolve it at runtime (remote config,
+     * a per-flavour value) rather than declaring it in the manifest.
+     *
+     * Only has an effect before [initialize]. When unset, the id is read from the host's
+     * `com.google.android.gms.ads.APPLICATION_ID` meta-data, which is where it already lives for
+     * every existing consumer of this library.
+     */
+    fun setApplicationId(applicationId: String): AdMobManager {
+        applicationIdOverride = applicationId
+        return this
+    }
+
+    /**
+     * Initializes the Google Mobile Ads SDK.
+     *
+     * **This must now be called**, and it must complete before any ad is requested. The Next-Gen SDK
+     * has no implicit startup: it takes the AdMob application id as an explicit
+     * [InitializationConfig] argument, so nothing can start it on the library's behalf the way the
+     * legacy SDK did from the manifest meta-data alone. A request made before this finishes fails.
+     *
+     * The id is read from the host manifest's `com.google.android.gms.ads.APPLICATION_ID` meta-data
+     * (still required, and still what the User Messaging Platform SDK reads), unless
+     * [setApplicationId] supplied one.
+     *
+     * @param onInitializationComplete Invoked on the main thread once initialization has finished.
+     *   Not called when no application id could be resolved - there is nothing to wait for in that
+     *   case, and every request will fail.
+     */
+    fun initialize(onInitializationComplete: () -> Unit) {
+        TimeManager.getInstance().start()
+        if (isInitialized || MobileAds.isInitialized) {
+            isInitialized = true
+            onInitializationComplete()
+            return
+        }
+
+        val applicationId = applicationIdOverride ?: readApplicationIdFromManifest()
+        if (applicationId.isNullOrBlank()) {
+            // Initializing with a blank id fails inside the SDK and surfaces later as an unexplained
+            // no-fill on every unit, so name the actual cause once, here.
+            Log.e(
+                TAG,
+                "Monetization:- AdMob NOT initialized: no application id. Declare " +
+                    "<meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" " +
+                    "android:value=\"ca-app-pub-...\"/> in the app manifest, or call " +
+                    "AdMobManager.setApplicationId() before initialize()."
+            )
+            return
+        }
+
+        // Still off the main thread: initialize() does disk and network work before returning.
+        CoroutineScope(Dispatchers.IO).launch {
+            val config = InitializationConfig.Builder(applicationId)
+                .apply { requestConfig?.let { setRequestConfiguration(it.toRequestConfiguration()) } }
+                .build()
+            MobileAds.initialize(application, config) { initializationStatus ->
+                Log.d(TAG, "Monetization:- AdMob initialized: $initializationStatus")
+                isInitialized = true
+                // The Next-Gen SDK calls back on a background thread, so the hop to Main is what
+                // makes it safe for hosts to start loading ads (and touching views) from here.
+                CoroutineScope(Dispatchers.Main).launch {
+                    onInitializationComplete()
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads the AdMob app id the host declared in its manifest.
+     *
+     * The legacy SDK picked this up by itself; the Next-Gen SDK does not, but the tag is still
+     * required for UMP, so reading it keeps every existing consumer working without a code change.
+     */
+    private fun readApplicationIdFromManifest(): String? = runCatching {
+        application.packageManager
+            .getApplicationInfo(application.packageName, PackageManager.GET_META_DATA)
+            .metaData
+            ?.getString(MANIFEST_APPLICATION_ID)
+    }.onFailure {
+        Log.e(TAG, "Monetization:- failed to read $MANIFEST_APPLICATION_ID from the manifest", it)
+    }.getOrNull()
 
     /**
      * Sets the App Open Ad Resume ID.
@@ -161,10 +221,8 @@ open class AdMobManager(
      * @return The current instance of AdMobManager.
      */
     fun setAppOpenAdResumeId( @ValidateAdUnitId appOpenAdResumeId: String): AdMobManager {
-        // A malformed id leaves the previous value in place rather than poisoning the controller.
-        if (AdUnitIdValidator.validateAdUnitId(appOpenAdResumeId)) {
-            adController.appOpenAdResumeId = appOpenAdResumeId
-        }
+        AdUnitIdValidator.validateAdUnitId(appOpenAdResumeId)
+        adController.appOpenAdResumeId = appOpenAdResumeId
         return this
     }
 
@@ -175,9 +233,8 @@ open class AdMobManager(
      * @return The current instance of AdMobManager.
      */
     fun setAppOpenAdStartId( @ValidateAdUnitId appOpenAdStartId: String): AdMobManager {
-        if (AdUnitIdValidator.validateAdUnitId(appOpenAdStartId)) {
-            adController.appOpenAdStartId = appOpenAdStartId
-        }
+        AdUnitIdValidator.validateAdUnitId(appOpenAdStartId)
+        adController.appOpenAdStartId = appOpenAdStartId
         return this
     }
 
@@ -249,33 +306,6 @@ open class AdMobManager(
     }
 
     /**
-     * Registers a live source of truth for premium status, consulted on every ad request.
-     *
-     * [setPremium] is a snapshot: it defaults to false, so between process start and the app setting
-     * it, a paying user can be served ads. A provider closes that window because it is read at request
-     * time - point it at whatever you already have (billing cache, prefs, DB) and the library never
-     * needs its own storage:
-     *
-     * ```kotlin
-     * AdMobManager.getInstance(app).setPremiumProvider { billingRepo.isSubscribed }
-     * ```
-     *
-     * The provider wins over [setPremium] whenever it is registered. Called on the calling thread, so
-     * keep it cheap - no disk or network reads.
-     */
-    fun setPremiumProvider(provider: (() -> Boolean)?): AdMobManager {
-        premiumProvider = provider
-        return this
-    }
-
-    /**
-     * Sets the splash status to only show App open ad at start.
-     * Set this to false when splash screen is destroyed to show the Open ad at resume.
-     *
-     * @param isSplash The splash status.
-     * @return The current instance of AdMobManager.
-     */
-    /**
      * Sets the splash status to only show App open ad at start.
      * Set this to false when splash screen is destroyed to show the Open ad at resume.
      *
@@ -288,85 +318,70 @@ open class AdMobManager(
     }
 
     /**
-     * Sets a custom layout resource ID for the loading dialog to match the app theme.
+     * Replaces the list of activities where app-open ads must not be shown.
+     * Subclasses of each listed class are also excluded. AdMob's own [com.google.android.libraries.ads.mobile.sdk.common.AdActivity]
+     * is always excluded regardless of this list.
      *
-     * @param layoutResId The custom layout resource ID.
+     * @param activities Activity classes to exclude.
      * @return The current instance of AdMobManager.
      */
-    fun setLoadingDialogLayout(@LayoutRes layoutResId: Int): AdMobManager {
-        adController.loadingDialogLayoutResId = layoutResId
-        LoadingDialogUtil.setGlobalLoadingLayoutResId(layoutResId)
+    fun setOpenAdExcludedActivities(vararg activities: Class<out Activity>): AdMobManager {
+        adController.openAdExcludedActivities.clear()
+        adController.openAdExcludedActivities.addAll(activities)
         return this
     }
 
     /**
-     * Sets the loading dialog used by interstitial and rewarded ads. Covers everything from "same
-     * layout, different wording" to supplying your own [android.app.Dialog].
+     * Adds a single activity class to the app-open exclusion list.
      *
-     * @see AdLoadingDialogConfig
+     * @param activity Activity class (and its subclasses) to exclude.
+     * @return The current instance of AdMobManager.
      */
-    fun setLoadingDialog(config: AdLoadingDialogConfig): AdMobManager {
-        adController.loadingDialogConfig = config
-        adController.loadingDialogLayoutResId = config.layoutResId
-        LoadingDialogUtil.globalConfig = config
+    fun addOpenAdExcludedActivity(activity: Class<out Activity>): AdMobManager {
+        adController.openAdExcludedActivities.add(activity)
         return this
     }
 
     /**
-     * Sets how long the loading dialog stays visible after an interstitial loads, before the ad is
-     * shown. Defaults to [AdController.DEFAULT_INTERSTITIAL_DIALOG_DELAY_MS] (1500 ms).
+     * Clears all host-configured app-open activity exclusions.
      *
-     * @param delayMs The delay in milliseconds.
+     * @return The current instance of AdMobManager.
      */
-    fun setInterstitialDialogDelay(delayMs: Long): AdMobManager {
-        adController.interstitialDialogDelayMs = delayMs
+    fun clearOpenAdExcludedActivities(): AdMobManager {
+        adController.openAdExcludedActivities.clear()
         return this
     }
+
+    /**
+     * The Activity a full-screen ad may be shown on right now, or null when the app has no usable
+     * foreground Activity.
+     *
+     * Hosts should use this instead of keeping their own `currentActivity` field. A host-side
+     * tracker that clears on `onActivityStopped` reads `null` from a `ProcessLifecycleOwner`
+     * `ON_START` observer, because that observer runs before the host's own lifecycle callbacks -
+     * which is how resume app-open ads ended up never being shown.
+     */
+    fun foregroundActivity(): Activity? = ForegroundActivityTracker.showableActivity()
+
+    /** True while the process has at least one started Activity. */
+    fun isAppInForeground(): Boolean = ForegroundActivityTracker.isForeground()
+
+    /** True while any full-screen ad (interstitial, app-open, rewarded) owns the screen. */
+    fun isFullScreenAdShowing(): Boolean = FullScreenGate.isShowing()
 
     companion object {
         private const val TAG = "AdMobManager"
+
+        /**
+         * Manifest meta-data holding the AdMob app id. Deliberately still the legacy key: the tag is
+         * unchanged by the migration, and the UMP SDK reads the same one.
+         */
+        private const val MANIFEST_APPLICATION_ID = "com.google.android.gms.ads.APPLICATION_ID"
         @Volatile
         private var instance: AdMobManager? = null
 
-        /**
-         * Current premium status. Reads through [premiumProvider] when one is registered, otherwise
-         * returns the value last set via [setPremium].
-         */
         @JvmStatic
         var isPremium: Boolean = false
-            get() = premiumProvider?.invoke() ?: field
-
-        @Volatile
-        internal var premiumProvider: (() -> Boolean)? = null
-
-        /** True once [initialize] has been called. Not the same as the SDK having finished starting. */
-        @Volatile
-        internal var initializeCalled: Boolean = false
-
-        private val initWarningLogged = java.util.concurrent.atomic.AtomicBoolean(false)
-
-        /**
-         * Logs, once, when an ad is requested before [initialize].
-         *
-         * [getInstance] only builds the facade - nothing else in the library starts `MobileAds`, so
-         * skipping [initialize] leaves every request failing, and the SDK usually reports it as
-         * "Network error". That sends the integrator to check connectivity, the emulator, the ad unit
-         * ids and the manifest before they think to check this, which is a whole afternoon. Naming it
-         * costs one log line.
-         */
-        @JvmStatic
-        internal fun warnIfNotInitialized() {
-            if (initializeCalled) return
-            if (initWarningLogged.compareAndSet(false, true)) {
-                AdsLog.e(
-                    TAG,
-                    "Ad requested before AdMobManager.initialize(). MobileAds was never started, so " +
-                        "every request will fail - usually reported as \"Network error\", which is " +
-                        "misleading. Call initialize() (or gatherConsent(), which initializes for " +
-                        "you) from Application.onCreate before requesting ads."
-                )
-            }
-        }
 
         /**
          * Gets the singleton instance of AdMobManager.
@@ -376,13 +391,37 @@ open class AdMobManager(
          */
         @JvmStatic
         fun getInstance(application: Application): AdMobManager {
-
-            // Establishes whether the HOST app is debuggable. Must happen before anything reads
-            // AdsLog.isEnabled or AdUnitIdValidator.strictMode, both of which default to it.
+            // Must run before anything else touches the library: AdsLog.isEnabled and
+            // AdUnitIdValidator.strictMode both default off it, and a library cannot read its own
+            // BuildConfig.DEBUG to find out (a published AAR is always release).
             AdsEnvironment.detectFrom(application)
+
             return instance ?: synchronized(this) {
                 instance ?: AdMobManager(application).also { instance = it }
             }
         }
+
+        /**
+         * Logs, once, that the SDK was never started.
+         *
+         * Requests made before [initialize] completes fail inside AdMob and are reported as
+         * "Network error", which sends people looking at connectivity. `Utilities.shouldShowAd`
+         * calls this so the real cause is named exactly once.
+         */
+        @JvmStatic
+        fun warnIfNotInitialized() {
+            if (instance?.isInitialized == true || MobileAds.isInitialized) return
+            if (!warnedNotInitialized) {
+                warnedNotInitialized = true
+                Log.e(
+                    TAG,
+                    "Monetization:- ad requested before AdMobManager.initialize() completed. Every " +
+                        "request will fail, usually reported as \"Network error\"."
+                )
+            }
+        }
+
+        @Volatile
+        private var warnedNotInitialized = false
     }
 }

@@ -1,5 +1,6 @@
 package com.umer_tf.ads.domain.utils
 
+import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,11 +43,11 @@ object TimeManager {
     fun start() {
         lock.write {
             if (!isRunning) {
-                AdsLog.d(TAG, "TimeManager started")
+                Log.d(TAG, "TimeManager started")
                 isRunning = true
                 startTime = System.currentTimeMillis()
             } else {
-                AdsLog.d(TAG, "TimeManager is already running")
+                Log.d(TAG, "TimeManager is already running")
             }
         }
     }
@@ -57,11 +58,11 @@ object TimeManager {
     fun stop() {
         lock.write {
             if (isRunning) {
-                AdsLog.d(TAG, "TimeManager stopped")
+                Log.d(TAG, "TimeManager stopped")
                 isRunning = false
                 // You can perform any cleanup or stop tasks here
             } else {
-                AdsLog.d(TAG, "TimeManager is not running")
+                Log.d(TAG, "TimeManager is not running")
             }
         }
     }
@@ -71,7 +72,7 @@ object TimeManager {
      */
     fun reset() {
         lock.write {
-            AdsLog.d(TAG, "TimeManager reset")
+            Log.d(TAG, "TimeManager reset")
             isRunning = true
             startTime = System.currentTimeMillis()
         }

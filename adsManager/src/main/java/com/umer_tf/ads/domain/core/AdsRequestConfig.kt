@@ -2,8 +2,7 @@ package com.umer_tf.ads.domain.core
 
 import android.content.Context
 import android.provider.Settings
-import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.RequestConfiguration
+import com.google.android.libraries.ads.mobile.sdk.common.RequestConfiguration
 import com.umer_tf.ads.domain.utils.AdsLog
 import java.security.MessageDigest
 import java.util.Locale
@@ -24,7 +23,7 @@ import java.util.Locale
  *             testDeviceIds = listOf("33BE2250B43518CCDA7DE426D04EE231")
  *         )
  *     )
- *     .initialize()
+ *     .initialize { /* ready */ }
  * ```
  *
  * @param tagForChildDirectedTreatment COPPA. `true`/`false` tag the traffic; `null` leaves it unset.
@@ -40,41 +39,61 @@ data class AdsRequestConfig @JvmOverloads constructor(
     val testDeviceIds: List<String> = emptyList()
 ) {
 
-    /** Builds the SDK-level configuration and applies it. Called by `AdMobManager.initialize`. */
-    internal fun applyToSdk() {
+    /**
+     * Builds the SDK-level configuration.
+     *
+     * Returned rather than applied, because the Next-Gen SDK has no
+     * `MobileAds.setRequestConfiguration()`: the configuration is a field of `InitializationConfig`
+     * and must be handed to `MobileAds.initialize()`. `AdMobManager.initialize` folds this into the
+     * config it builds, which is why [AdMobManager.setRequestConfig] only has an effect before
+     * initialization.
+     */
+    internal fun toRequestConfiguration(): RequestConfiguration {
         val builder = RequestConfiguration.Builder()
 
         tagForChildDirectedTreatment?.let {
             builder.setTagForChildDirectedTreatment(
-                if (it) RequestConfiguration.TAG_FOR_CHILD_DIRECTED_TREATMENT_TRUE
-                else RequestConfiguration.TAG_FOR_CHILD_DIRECTED_TREATMENT_FALSE
+                if (it) RequestConfiguration.TagForChildDirectedTreatment.TAG_FOR_CHILD_DIRECTED_TREATMENT_TRUE
+                else RequestConfiguration.TagForChildDirectedTreatment.TAG_FOR_CHILD_DIRECTED_TREATMENT_FALSE
             )
         }
         tagForUnderAgeOfConsent?.let {
             builder.setTagForUnderAgeOfConsent(
-                if (it) RequestConfiguration.TAG_FOR_UNDER_AGE_OF_CONSENT_TRUE
-                else RequestConfiguration.TAG_FOR_UNDER_AGE_OF_CONSENT_FALSE
+                if (it) RequestConfiguration.TagForUnderAgeOfConsent.TAG_FOR_UNDER_AGE_OF_CONSENT_TRUE
+                else RequestConfiguration.TagForUnderAgeOfConsent.TAG_FOR_UNDER_AGE_OF_CONSENT_FALSE
             )
         }
-        maxAdContentRating?.let(builder::setMaxAdContentRating)
+        maxAdContentRating?.let { rating ->
+            val resolved = RequestConfiguration.MaxAdContentRating.entries
+                .firstOrNull { it.value == rating }
+            if (resolved == null) {
+                AdsLog.e(TAG, "Unknown maxAdContentRating \"$rating\"; use the RATING_* constants")
+            } else {
+                builder.setMaxAdContentRating(resolved)
+            }
+        }
         if (testDeviceIds.isNotEmpty()) builder.setTestDeviceIds(testDeviceIds)
 
-        MobileAds.setRequestConfiguration(builder.build())
         AdsLog.d(
             TAG,
             "RequestConfiguration applied: childDirected=$tagForChildDirectedTreatment, " +
                 "underAge=$tagForUnderAgeOfConsent, maxRating=$maxAdContentRating, " +
                 "testDevices=${testDeviceIds.size}"
         )
+        return builder.build()
     }
 
     companion object {
         private const val TAG = "AdsManager_RequestConfig"
 
-        @JvmField val RATING_G: String = RequestConfiguration.MAX_AD_CONTENT_RATING_G
-        @JvmField val RATING_PG: String = RequestConfiguration.MAX_AD_CONTENT_RATING_PG
-        @JvmField val RATING_T: String = RequestConfiguration.MAX_AD_CONTENT_RATING_T
-        @JvmField val RATING_MA: String = RequestConfiguration.MAX_AD_CONTENT_RATING_MA
+        @JvmField
+        val RATING_G: String = RequestConfiguration.MaxAdContentRating.MAX_AD_CONTENT_RATING_G.value
+        @JvmField
+        val RATING_PG: String = RequestConfiguration.MaxAdContentRating.MAX_AD_CONTENT_RATING_PG.value
+        @JvmField
+        val RATING_T: String = RequestConfiguration.MaxAdContentRating.MAX_AD_CONTENT_RATING_T.value
+        @JvmField
+        val RATING_MA: String = RequestConfiguration.MaxAdContentRating.MAX_AD_CONTENT_RATING_MA.value
 
         /**
          * Ready-made configuration for a Play Families / child-directed app: COPPA on, under-age on,

@@ -50,6 +50,15 @@ android {
     }
 }
 
+// The Next-Gen SDK cannot coexist with the legacy one - both carry the same internal symbols, so a
+// build that resolves both fails on duplicate classes. Excluding it here covers every transitive
+// edge at once (mediation adapters and older Google SDKs still declare play-services-ads), instead
+// of chasing them one dependency at a time.
+configurations.all {
+    exclude(group = "com.google.android.gms", module = "play-services-ads")
+    exclude(group = "com.google.android.gms", module = "play-services-ads-lite")
+}
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
@@ -59,9 +68,9 @@ dependencies {
     api(libs.androidx.lifecycle.runtime.ktx)
 
     // Declared explicitly rather than relied on as a transitive of the lifecycle artifacts. The
-    // public API exposes StateFlow and Flow, so this belongs on the compile classpath of every
-    // consumer by contract - and an undeclared transitive breaks at runtime, in every app at once,
-    // the day AndroidX changes that edge or a host app forces a different coroutines version.
+    // public API exposes StateFlow and Flow (AdViewModel), so this belongs on the compile classpath
+    // of every consumer by contract - and an undeclared transitive breaks at runtime, in every app
+    // at once, the day AndroidX changes that edge or a host app forces a different coroutines version.
     api(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
@@ -74,8 +83,11 @@ dependencies {
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlatics)
 
-    // AdMob SDK
-    api(libs.play.services.ads)
+    // Google Mobile Ads SDK (Next-Gen). Kept as `api` rather than `implementation` because the
+    // public surface of this library hands SDK types back to callers - NativeAd through
+    // OnSuccessListenerNative, AdValue through AdsAnalytics - so consumers must compile against it.
+    // The User Messaging Platform SDK used by AdsConsentManager arrives transitively from here.
+    api(libs.ads.mobile.sdk)
 
     //Shimmer
     implementation (libs.shimmer)
@@ -93,7 +105,7 @@ afterEvaluate {
                 from(components.getByName("release"))
                 groupId = "com.umer_tf.ads"
                 artifactId = "ads"
-                version = "2.0.0"
+                version = "3.0.0"
             }
         }
         repositories {
@@ -105,15 +117,8 @@ afterEvaluate {
                     if (localPropsFile.exists()) {
                         localProps.load(localPropsFile.inputStream())
                     }
-                    // Local first, then Gradle properties, then the environment. The env fallback is
-                    // what CI uses: local.properties is gitignored and gpr.* are not set on a runner,
-                    // so .github/workflows/publish.yaml would otherwise authenticate as null and 401.
-                    username = localProps.getProperty("gpr.user")
-                        ?: providers.gradleProperty("gpr.user").orNull
-                        ?: providers.environmentVariable("GITHUB_USERNAME").orNull
-                    password = localProps.getProperty("gpr.key")
-                        ?: providers.gradleProperty("gpr.key").orNull
-                        ?: providers.environmentVariable("GITHUB_TOKEN").orNull
+                    username = localProps.getProperty("gpr.user") ?: providers.gradleProperty("gpr.user").orNull
+                    password = localProps.getProperty("gpr.key") ?: providers.gradleProperty("gpr.key").orNull
                 }
             }
         }

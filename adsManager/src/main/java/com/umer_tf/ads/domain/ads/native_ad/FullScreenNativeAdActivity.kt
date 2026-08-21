@@ -18,6 +18,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.facebook.shimmer.ShimmerFrameLayout
 import com.umer_tf.ads.R
+import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.core.AdMobManager
@@ -129,9 +130,12 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
         // Load & Show native ad using NativeAdLoader
         val adMobManager = AdMobManager.getInstance(application)
         adMobManager.nativeAdLoader.loadAndShow(
-            adUnitId = adUnitId,
-            builder = builder,
-            onAdLoaded = { success ->
+            adUnitId,
+            builder,
+            this,
+            // The loader delivers this on the main thread (every SDK callback body is funnelled
+            // through onMainThread), so touching views straight from here is safe.
+            OnSuccessListener { success ->
                 adResolved = true
                 loadTimeoutRunnable?.let { handler.removeCallbacks(it) }
                 loadTimeoutRunnable = null
@@ -267,7 +271,10 @@ class FullScreenNativeAdActivity : AppCompatActivity() {
             loadTimeoutMs: Long = DEFAULT_LOAD_TIMEOUT_MS,
             onAdDismissed: (() -> Unit)? = null
         ) {
+            // A false return means "skip": strictMode has already thrown if the host wanted a malformed
+            // id to be fatal. Here it must still close the loop via onAdDismissed, or gated navigation stalls.
             if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
+                AdsLog.e(TAG_STATIC, "start: malformed ad unit id \"$adUnitId\"")
                 // Nothing was started, so the caller still needs to be released.
                 onAdDismissed?.invoke()
                 return

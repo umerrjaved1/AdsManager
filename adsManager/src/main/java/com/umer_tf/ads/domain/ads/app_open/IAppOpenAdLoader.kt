@@ -2,20 +2,21 @@ package com.umer_tf.ads.domain.ads.app_open
 
 import android.content.Context
 import androidx.annotation.MainThread
+import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 
 interface IAppOpenAdLoader {
 
     @MainThread
-    fun loadResumeAd(context: Context, onAdLoaded: ((Boolean) -> Unit)? = null)
+    fun loadResumeAd(context: Context, onSuccessListener: OnSuccessListener<Boolean>?)
 
     @MainThread
-    fun loadAppOpenAd(context: Context, onAdLoaded: ((Boolean) -> Unit)? = null)
+    fun loadAppOpenAd(context: Context, onSuccessListener: OnSuccessListener<Boolean>?)
 
     @MainThread
-    fun showResumeAdIfAvailable(onShowAdCompleteListener: ((Boolean) -> Unit)? = null)
+    fun showResumeAdIfAvailable(onShowAdCompleteListener: OnSuccessListener<Boolean>)
 
     @MainThread
-    fun showAppOpenAdIfAvailable(onShowAdCompleteListener: ((Boolean) -> Unit)? = null)
+    fun showAppOpenAdIfAvailable(onShowAdCompleteListener: OnSuccessListener<Boolean>)
 
     @MainThread
     fun destroyAds()

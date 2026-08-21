@@ -22,8 +22,12 @@
 
 -keep class com.appsflyer.** { *; }
 -keep class kotlin.jvm.internal.** { *; }
+# Google Mobile Ads SDK (Next-Gen).
+-keep public class com.google.android.libraries.ads.mobile.sdk.** {public *;}
+# The Next-Gen SDK still ships a handful of classes under the legacy package - the MediaView that
+# nativead.MediaView extends, and MediationExtrasReceiver referenced by putAdSourceExtrasBundle - so
+# these keeps stay even though play-services-ads itself is gone.
 -keep public class com.google.android.gms.ads.** {public *;}
 -keep public class com.google.ads.** {public *;}
--keep public class com.google.android.gms.internal.ads.** {public *;}
 -dontwarn com.facebook.infer.annotation.Nullsafe$Mode
 -dontwarn com.facebook.infer.annotation.Nullsafe

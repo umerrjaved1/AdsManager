@@ -6,7 +6,7 @@
     clAd, and populateNativeAdView looks that id up to apply the background colour, corner radius and
     stroke - so NativeAdTheme was silently a no-op on this one shape while working everywhere else.
 -->
-<com.google.android.gms.ads.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/native_ad_view"
@@ -110,4 +110,4 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-</com.google.android.gms.ads.nativead.NativeAdView>
+</com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView>

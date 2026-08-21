@@ -6,8 +6,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowMetrics
-import com.google.android.gms.ads.AdSize
+import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
 import com.umer_tf.ads.domain.consent.AdsConsentGate
 import com.umer_tf.ads.domain.core.AdMobManager
 
@@ -41,31 +42,25 @@ object Utilities {
             }
             return false
         } catch (e: Exception) {
-            AdsLog.d("TAG", "isNetworkAvailable: ${e.message}")
+            Log.d("TAG", "isNetworkAvailable: ${e.message}")
             return false
         }
     }
 
     /**
-     * Single gate every ad request passes through: not a paying user, online, and permitted by the
-     * user's consent status.
+     * The single gate every ad request passes through: premium, connectivity and consent.
      *
-     * @see com.umer_tf.ads.domain.consent.AdsConsentGate
+     * A caller that gets false must report failure through its own callback rather than going
+     * quiet, or navigation gated on an ad outcome stalls.
      */
     fun shouldShowAd(context: Context?): Boolean {
-        // Warn rather than block: an app that has genuinely not initialized is broken either way, and
-        // failing the gate here would hide the real reason behind a generic "request blocked".
+        // Named here rather than at each call site: a request made before initialize() completes
+        // fails inside AdMob as a misleading "Network error".
         AdMobManager.warnIfNotInitialized()
-        if (AdMobManager.isPremium) return false
-        if (!isNetworkAvailable(context)) return false
-        if (!AdsConsentGate.allowsAdRequests()) {
-            AdsLog.d(TAG, "shouldShowAd: blocked by consent status")
-            return false
-        }
-        return true
+        return !AdMobManager.isPremium &&
+            isNetworkAvailable(context) &&
+            AdsConsentGate.allowsAdRequests()
     }
-
-    private const val TAG = "AdsManager_Utilities"
 
     /**
      * Determines the screen width (less decorations) to use for the ad width and returns the adaptive ad size.

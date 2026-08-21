@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.gms.ads.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:paddingTop="@dimen/_10sdp"
@@ -24,7 +24,7 @@
                 style="@style/AdAttribution"
                 android:layout_gravity="start"
                 android:layout_marginStart="@dimen/_10sdp"
-                android:visibility="visible"
+                android:visibility="gone"
                 app:layout_constraintBottom_toBottomOf="@+id/ad_headline"
                 app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
                 app:layout_constraintTop_toTopOf="@+id/ad_headline" />
@@ -50,7 +50,7 @@
                 android:includeFontPadding="false"
                 android:singleLine="true"
                 android:textColor="@color/ad_text_primary"
-                android:textSize="@dimen/ad_text_headline"
+                android:textSize="@dimen/_13sdp"
                 app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
                 app:layout_constraintStart_toEndOf="@+id/ad_app_icon"
                 app:layout_constraintTop_toTopOf="@+id/ad_app_icon" />
@@ -67,7 +67,7 @@
                 android:text="Open"
                 android:textAllCaps="false"
                 android:textColor="@color/ad_cta_text"
-                android:textSize="@dimen/ad_text_cta"
+                android:textSize="@dimen/_11ssp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -91,7 +91,7 @@
                 android:maxLines="3"
                 android:text="The ultimate PDF reader Redefine your PDF reading. Make it worthwhile for your reading tool"
                 android:textColor="@color/ad_text_primary"
-                android:textSize="@dimen/ad_text_body"
+                android:textSize="@dimen/_11sdp"
                 android:visibility="visible"
                 app:layout_constraintEnd_toStartOf="@+id/ad_call_to_action"
                 app:layout_constraintStart_toEndOf="@+id/textView17"
@@ -102,7 +102,7 @@
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:gravity="bottom"
-                android:textSize="@dimen/ad_text_meta"
+                android:textSize="@dimen/_9sdp"
                 android:textStyle="normal"
                 android:visibility="gone"
                 app:layout_constraintStart_toStartOf="parent"
@@ -129,7 +129,7 @@
                 android:paddingLeft="5dp"
                 android:paddingEnd="5dp"
                 android:paddingRight="5dp"
-                android:textSize="@dimen/ad_text_meta"
+                android:textSize="12sp"
                 android:visibility="gone"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -142,11 +142,11 @@
                 android:paddingLeft="5dp"
                 android:paddingEnd="5dp"
                 android:paddingRight="5dp"
-                android:textSize="@dimen/ad_text_meta"
+                android:textSize="12sp"
                 android:visibility="gone"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
-</com.google.android.gms.ads.nativead.NativeAdView>
+</com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView>

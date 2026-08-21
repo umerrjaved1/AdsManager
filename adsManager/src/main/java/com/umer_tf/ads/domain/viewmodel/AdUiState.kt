@@ -1,6 +1,6 @@
 package com.umer_tf.ads.domain.viewmodel
 
-import com.google.android.gms.ads.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 import com.umer_tf.ads.domain.analytics.AdLoadFailure
 import com.umer_tf.ads.domain.analytics.AdType
 
