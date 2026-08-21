@@ -37,7 +37,14 @@ class RewardedAdLoader(
 ) : IRewardedAdLoader {
     private val TAG = "RewardedAdLoader"
     private var rewardedAd: RewardedAd? = null
-    private val loadingDialogUtil = LoadingDialogUtil.create(context)
+    /**
+     * Rebound to the showing Activity in [loadAndShowAd].
+     *
+     * It was built once from the Application context, which cannot own a Dialog - `show()` threw
+     * `BadTokenException` straight into its own catch block, so the rewarded loading dialog never
+     * appeared at all and `showDialog = true` was silently a no-op.
+     */
+    private var loadingDialogUtil = LoadingDialogUtil.create(context)
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @MainThread
@@ -161,9 +168,16 @@ class RewardedAdLoader(
             onRewardEarned?.onSuccess(false)
             return
         }
+        // Bound to this Activity, and torn down first so a dialog left over from a previous
+        // Activity cannot keep it alive.
+        loadingDialogUtil.destroy()
+        loadingDialogUtil = LoadingDialogUtil.create(activity)
         if (showDialog) loadingDialogUtil.showLoadingDialog()
 
         if (rewardedAd != null){
+            // Nothing is being fetched on this path, so the dialog has to come down before the ad
+            // covers the screen - otherwise it is still there when the user closes the ad.
+            loadingDialogUtil.hideLoadingDialog()
             showAd(activity, onRewardEarned)
             return
         }

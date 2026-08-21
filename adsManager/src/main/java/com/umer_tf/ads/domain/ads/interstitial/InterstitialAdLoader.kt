@@ -68,6 +68,40 @@ class InterstitialAdLoader(
      */
     private val adExpiryMs = 55 * 60 * 1000L
 
+    /**
+     * Enforces the terminal contract for one show attempt: at most one `onAdFailedToShow`, then
+     * exactly one `onAdDismissed`, whichever path the attempt takes.
+     *
+     * One of these is created per public show call and threaded through every branch, rather than
+     * each branch invoking the host's lambdas directly. The branches are spread across async hops -
+     * a load callback, a `postDelayed`, and the SDK's own event callback - so "these paths are
+     * mutually exclusive" is an argument, not a guarantee. This makes it one.
+     *
+     * The failure reason is reported *before* dismissal so a caller that logs in one and navigates
+     * in the other still has the reason in hand when it navigates.
+     */
+    private class ShowOutcome(
+        private val onAdDismissed: (() -> Unit)?,
+        private val onAdFailedToShow: ((String) -> Unit)?
+    ) {
+        private var settled = false
+
+        /** Nothing was displayed. Reports the reason, then closes the attempt. */
+        fun failed(reason: String) {
+            if (settled) return
+            settled = true
+            onAdFailedToShow?.invoke(reason)
+            onAdDismissed?.invoke()
+        }
+
+        /** The ad was shown and the user closed it. */
+        fun dismissed() {
+            if (settled) return
+            settled = true
+            onAdDismissed?.invoke()
+        }
+    }
+
     /** One slot per ad unit. Mutated on the main thread only, so it needs no locking. */
     private class Slot {
         var ad: InterstitialAd? = null
@@ -274,7 +308,7 @@ class InterstitialAdLoader(
 
     /**
      * Wires the callbacks and displays [ad]. Returns false when the show was refused, in which
-     * case [onSuccessListener] has already been told and the slot is untouched.
+     * case [onSuccessListener] and [outcome] have already been told and the slot is untouched.
      */
     @MainThread
     private fun show(
@@ -282,19 +316,24 @@ class InterstitialAdLoader(
         adUnitId: String,
         ad: InterstitialAd,
         onDialogDismiss: (() -> Unit)? = null,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onSuccessListener: OnSuccessListener<Boolean>?,
+        outcome: ShowOutcome
     ): Boolean {
         val slot = slotFor(adUnitId)
         emit(adUnitId, AdEvent.SHOW_REQUESTED, slot.state)
 
         if (activity.isFinishing || activity.isDestroyed) {
+            val reason = "Activity ${activity.javaClass.simpleName} is finishing or destroyed"
             emit(adUnitId, AdEvent.SHOW_REJECTED_INVALID_ACTIVITY, slot.state, activity.javaClass.simpleName)
             onSuccessListener?.onSuccess(false)
+            outcome.failed(reason)
             return false
         }
         if (!FullScreenGate.acquire(GATE_OWNER)) {
+            val reason = "another full-screen ad is showing (${FullScreenGate.currentOwner()})"
             emit(adUnitId, AdEvent.SHOW_REJECTED_ALREADY_SHOWING, slot.state, FullScreenGate.currentOwner())
             onSuccessListener?.onSuccess(false)
+            outcome.failed(reason)
             return false
         }
 
@@ -332,6 +371,7 @@ class InterstitialAdLoader(
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
                 onDialogDismiss?.invoke()
                 onSuccessListener?.onSuccess(true)
+                outcome.dismissed()
             }
 
             override fun onAdFailedToShowFullScreenContent(
@@ -348,6 +388,7 @@ class InterstitialAdLoader(
                 )
                 onDialogDismiss?.invoke()
                 onSuccessListener?.onSuccess(false)
+                outcome.failed(fullScreenContentError.message)
             }
 
             override fun onAdClicked() {
@@ -380,6 +421,7 @@ class InterstitialAdLoader(
             slot.loadedAtElapsed = 0L
             emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, "show() threw: ${t.javaClass.simpleName}")
             onSuccessListener?.onSuccess(false)
+            outcome.failed("show() threw ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }
@@ -388,38 +430,55 @@ class InterstitialAdLoader(
     override fun showAd(
         activity: Activity,
         adUnitId: String,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onSuccessListener: OnSuccessListener<Boolean>?,
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
+        val outcome = ShowOutcome(onAdDismissed, onAdFailedToShow)
+
         if (!shouldShowAd(context)) {
+            val reason = "request blocked: premium, offline or consent-gated"
             emit(adUnitId, AdEvent.SHOW_REJECTED_NOT_READY, stateOf(adUnitId), "premium or offline")
             onSuccessListener?.onSuccess(false)
+            outcome.failed(reason)
             return
         }
         val ad = readyAd(adUnitId)
         if (ad == null) {
+            val reason = "no interstitial ready for $adUnitId (state ${stateOf(adUnitId)})"
             emit(adUnitId, AdEvent.SHOW_REJECTED_NOT_READY, stateOf(adUnitId))
             onSuccessListener?.onSuccess(false)
+            outcome.failed(reason)
             return
         }
-        show(activity, adUnitId, ad, onSuccessListener = onSuccessListener)
+        show(activity, adUnitId, ad, onSuccessListener = onSuccessListener, outcome = outcome)
     }
 
     override fun showAndLoadAd(
         activity: Activity,
         adUnitId: String,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onSuccessListener: OnSuccessListener<Boolean>?,
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
-        showAd(activity, adUnitId, onSuccessListener)
+        showAd(activity, adUnitId, onSuccessListener, onAdDismissed, onAdFailedToShow)
     }
 
     override fun showAdWithTimeAndCounter(
         activity: Activity,
         adUnitId: String,
         showForcefully: Boolean,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onSuccessListener: OnSuccessListener<Boolean>?,
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
         if (!shouldShowInterstitialAd(showForcefully)) {
             onSuccessListener?.onSuccess(false)
+            // A capped trigger is still a terminal outcome for the caller: a screen that navigates
+            // on dismissal must move on exactly as it would after a real ad.
+            ShowOutcome(onAdDismissed, onAdFailedToShow).failed(
+                "frequency cap not met (counter $mInterstitialAdCounter/${adController.interstitialCounter})"
+            )
             return
         }
         Log.d(
@@ -427,9 +486,12 @@ class InterstitialAdLoader(
             "Monetization :- showAdWithTimeAndCounter: mInterstitialAdCounter: $mInterstitialAdCounter"
         )
         if (readyAd(adUnitId) != null) {
-            showAd(activity, adUnitId, onSuccessListener)
+            // Delegated whole: showAd builds its own ShowOutcome, and nothing here settles on this
+            // branch, so the callbacks still fire exactly once.
+            showAd(activity, adUnitId, onSuccessListener, onAdDismissed, onAdFailedToShow)
         } else {
             onSuccessListener?.onSuccess(false)
+            ShowOutcome(onAdDismissed, onAdFailedToShow).failed("no interstitial ready for $adUnitId")
             // Warm this unit so the next eligible trigger is not a cold load.
             emit(adUnitId, AdEvent.NEXT_PRELOAD_STARTED, stateOf(adUnitId))
             requestAd(adUnitId, null)
@@ -449,13 +511,20 @@ class InterstitialAdLoader(
         activity: Activity,
         @ValidateAdUnitId adUnitId: String,
         showDialog: Boolean,
-        onSuccessListener: OnSuccessListener<Boolean>?
+        onSuccessListener: OnSuccessListener<Boolean>?,
+        onAdDismissed: (() -> Unit)?,
+        onAdFailedToShow: ((String) -> Unit)?
     ) {
+        val outcome = ShowOutcome(onAdDismissed, onAdFailedToShow)
+
         if (!AdUnitIdValidator.validateAdUnitId(adUnitId) ||
             !shouldShowAd(context) || activity.isFinishing || activity.isDestroyed
         ) {
             emit(adUnitId, AdEvent.SHOW_REJECTED_INVALID_ACTIVITY, stateOf(adUnitId))
             onSuccessListener?.onSuccess(false)
+            outcome.failed(
+                "refused before requesting: malformed id, blocked request, or dead Activity"
+            )
             return
         }
 
@@ -474,7 +543,9 @@ class InterstitialAdLoader(
 
             readyAd(adUnitId)?.let { cached ->
                 if (showDialog) loadingDialogUtil?.showLoadingDialog()
-                if (!show(activity, adUnitId, cached, hideDialog, onSuccessListener)) hideDialog()
+                if (!show(activity, adUnitId, cached, hideDialog, onSuccessListener, outcome)) {
+                    hideDialog()
+                }
                 return@runCatching
             }
 
@@ -484,6 +555,9 @@ class InterstitialAdLoader(
                 if (loaded != true) {
                     hideDialog()
                     onSuccessListener?.onSuccess(false)
+                    // A no-fill and a failed show are the same outcome from the caller's side:
+                    // no ad was displayed, and whatever was waiting on dismissal must proceed.
+                    outcome.failed("no fill for $adUnitId")
                     return@requestAd
                 }
                 // The ad is safely in the slot now; this delay can only postpone the impression.
@@ -498,14 +572,18 @@ class InterstitialAdLoader(
                         )
                         hideDialog()
                         onSuccessListener?.onSuccess(false)
+                        outcome.failed("Activity gone during adShowDelay - ad kept for next request")
                         return@postDelayed
                     }
-                    if (!show(activity, adUnitId, ad, hideDialog, onSuccessListener)) hideDialog()
+                    if (!show(activity, adUnitId, ad, hideDialog, onSuccessListener, outcome)) {
+                        hideDialog()
+                    }
                 }, adShowDelay)
             }
         }.getOrElse {
             Log.e(TAG, "Monetization :- loadAndShowInterstitialAd: Exception-> $it")
             onSuccessListener?.onSuccess(false)
+            outcome.failed("loadAndShowAd threw ${it.javaClass.simpleName}: ${it.message}")
         }
     }
 

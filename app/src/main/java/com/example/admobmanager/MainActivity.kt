@@ -25,6 +25,7 @@ import com.umer_tf.ads.domain.ads.native_ad.NativeAdShimmer
 import com.umer_tf.ads.domain.ads.native_ad.NativeAdTheme
 import com.umer_tf.ads.domain.ads.native_ad.stopAndHide
 import com.umer_tf.ads.domain.core.AdMobManager
+import com.umer_tf.ads.domain.utils.AdLoadingDialogConfig
 import com.umer_tf.ads.domain.viewmodel.AdEvent
 import com.umer_tf.ads.domain.viewmodel.AdViewModel
 import com.umer_tf.ads.domain.viewmodel.FullScreenAdUiState
@@ -262,6 +263,8 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+
+        adMobManager.setLoadingDialogLayout(R.layout.load_dialog)
     }
 
     private fun setupButtons() {
