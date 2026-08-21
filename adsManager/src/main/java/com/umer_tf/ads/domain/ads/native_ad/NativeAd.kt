@@ -156,6 +156,13 @@ class NativeAd(
         }
     }
 
+    /** True when this native can paint in [frame] on [activity]. */
+    private fun canPaintNative(activity: Activity, frame: android.widget.FrameLayout?): Boolean {
+        if (activity.isFinishing || activity.isDestroyed) return false
+        if (frame == null || !frame.isAttachedToWindow) return false
+        return frame.isShown
+    }
+
     /**
      * Loads and shows a native ad.
      * @param builder The builder for the native ad.
@@ -180,13 +187,18 @@ class NativeAd(
         // forNativeAd caches the object before onAdLoaded clears inFlight, so checking join
         // first parked on a fill that was already READY and then skipped it.
         consumeCachedAd(adUnitId)?.let { cached ->
+            if (!canPaintNative(activity, builder.frameLayout)) {
+                putInCache(adUnitId, cached)
+                builder.shimmerFrameLayout?.stopShimmer()
+                builder.shimmerFrameLayout?.visibility = View.GONE
+                onSuccessListener?.onSuccess(false)
+                return
+            }
             Log.d(TAG, "Monetization :- loadAndShow using preloaded ad for $adUnitId")
             emit(adUnitId, AdEvent.REQUEST_SKIPPED_CACHED)
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
             bindToFrame(cached, builder)
-            // Same revenue reporting as the fresh-load and showLoadedAd paths - without this a
-            // preloaded ad displayed through loadAndShow earned money that never reached analytics.
             attachPaidEventListener(cached, adUnitId)
             onSuccessListener?.onSuccess(true)
             return
@@ -227,7 +239,6 @@ class NativeAd(
     ) {
         Log.d(TAG, "Monetization :- loadAndShow joining in-flight request for $adUnitId")
         emit(adUnitId, AdEvent.REQUEST_JOINED)
-        builder.frameLayout?.visibility = View.GONE
         builder.shimmerFrameLayout?.startShimmer()
         builder.shimmerFrameLayout?.visibility = View.VISIBLE
 
@@ -286,23 +297,21 @@ class NativeAd(
         activity: Activity,
         onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        builder.frameLayout?.visibility = View.GONE
         builder.shimmerFrameLayout?.startShimmer()
         builder.shimmerFrameLayout?.visibility = View.VISIBLE
 
         inFlight.add(adUnitId)
         emit(adUnitId, AdEvent.REQUEST_STARTED)
 
-        var cachedBecauseActivityDied = false
+        var cachedBecauseNotVisible = false
         val adBuilder = AdLoader.Builder(context, adUnitId)
-        // OnLoadedListener implementation.
         adBuilder.forNativeAd { nativeAd ->
-            // Language (and other short-lived screens) can finish in 1–3s. Binding into a
-            // dying view produces a match with no impression; keep the fill for the next screen.
-            if (activity.isFinishing || activity.isDestroyed) {
-                Log.d(TAG, "Monetization :- loadAndShow fill after Activity died — caching $adUnitId")
+            // Binding into a finishing Activity or an off-screen / GONE frame is a match with
+            // no impression. Keep the fill for the next loadAndShow of this same unit.
+            if (!canPaintNative(activity, builder.frameLayout)) {
+                Log.d(TAG, "Monetization :- loadAndShow fill not paintable — caching $adUnitId")
                 putInCache(adUnitId, nativeAd)
-                cachedBecauseActivityDied = true
+                cachedBecauseNotVisible = true
                 return@forNativeAd
             }
             bindToFrame(nativeAd, builder)
@@ -349,7 +358,7 @@ class NativeAd(
                 builder.shimmerFrameLayout?.stopShimmer()
                 builder.shimmerFrameLayout?.visibility = View.GONE
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
-                if (cachedBecauseActivityDied) {
+                if (cachedBecauseNotVisible) {
                     emit(adUnitId, AdEvent.READY)
                     onSuccessListener?.onSuccess(false)
                     settleWaiters(adUnitId, cachedAdFor(adUnitId))

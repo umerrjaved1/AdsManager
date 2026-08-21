@@ -292,19 +292,14 @@ class AppOpenAdLoader(
             logResumeTiming(startTime, currentTime, timeDiff, remoteTimer)
             
             if (timeDiff >= remoteTimer) {
-                showResumeAdIfAvailable { _ ->
-                    // Refill for the next resume. Without this the slot was only ever filled by
-                    // the branch below - unreachable whenever openAdResumeTime is 0 - and was
-                    // never refilled after a show, so resume ads effectively never appeared.
-                    if (!resumeAdManager.isAdAvailable()) {
-                        Log.d(TAG, "Monetization :- OpenAd Resume - preloading for the next resume")
-                        loadResumeAd(activity, null)
+                if (resumeAdManager.isAdAvailable()) {
+                    showResumeAdIfAvailable { }
+                } else {
+                    // Request only when this resume is eligible to show. Prefetching here
+                    // (or after a show) produced matches that the next resume never displayed.
+                    loadResumeAd(activity) { loaded ->
+                        if (loaded == true) showResumeAdIfAvailable { }
                     }
-                }
-            } else {
-                startTime = 0
-                if (!resumeAdManager.isAdAvailable()) {
-                    loadResumeAd(activity, null)
                 }
             }
         }

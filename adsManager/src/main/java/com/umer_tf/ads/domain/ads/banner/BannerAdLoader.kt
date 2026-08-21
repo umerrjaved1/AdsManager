@@ -88,6 +88,38 @@ class BannerAdLoader: IBannerAdLoader {
     }
 
     /**
+     * Keep the host slot visible and laid out for the request. Setting it [View.GONE] before
+     * [AdView.loadAd] is what produced hundreds of banner matches with almost no impressions:
+     * AdMob fills a 0-height / hidden AdView, then console refresh keeps requesting it.
+     */
+    private fun prepareVisibleSlot(
+        frameLayout: FrameLayout,
+        shimmerFrameLayout: ShimmerFrameLayout?,
+    ): Boolean {
+        if (!frameLayout.isAttachedToWindow) {
+            Log.d(TAG, "Monetization :- banner skipped — frame not attached")
+            shimmerFrameLayout?.stopShimmer()
+            shimmerFrameLayout?.visibility = View.GONE
+            return false
+        }
+        frameLayout.visibility = View.VISIBLE
+        shimmerFrameLayout?.startShimmer()
+        shimmerFrameLayout?.visibility = View.VISIBLE
+        return true
+    }
+
+    private fun collapseFailedBanner(
+        frameLayout: FrameLayout,
+        shimmerFrameLayout: ShimmerFrameLayout?,
+    ) {
+        shimmerFrameLayout?.stopShimmer()
+        shimmerFrameLayout?.visibility = View.GONE
+        adViewsByFrame.remove(frameLayout)?.destroy()
+        frameLayout.removeAllViews()
+        frameLayout.visibility = View.GONE
+    }
+
+    /**
      * Shows an adaptive banner ad.
      *
      * @param activity The activity context.
@@ -108,10 +140,26 @@ class BannerAdLoader: IBannerAdLoader {
                 shimmerFrameLayout?.visibility = View.GONE
                 return
             }
-            frameLayout.visibility = View.GONE
-            shimmerFrameLayout?.startShimmer()
-            shimmerFrameLayout?.visibility = View.VISIBLE
+            val start = {
+                if (activity.isFinishing || activity.isDestroyed) {
+                    shimmerFrameLayout?.stopShimmer()
+                    shimmerFrameLayout?.visibility = View.GONE
+                } else if (prepareVisibleSlot(frameLayout, shimmerFrameLayout)) {
+                    loadAdaptiveBanner(activity, shimmerFrameLayout, frameLayout, adUnitId)
+                }
+            }
+            if (frameLayout.width > 0) start() else frameLayout.post(start)
+        } catch (e: Exception) {
+            Log.d(TAG, "Monetization :- loadBanner: ${e.message}")
+        }
+    }
 
+    private fun loadAdaptiveBanner(
+        activity: Activity,
+        shimmerFrameLayout: ShimmerFrameLayout?,
+        frameLayout: FrameLayout,
+        adUnitId: String,
+    ) {
             val adView = AdView(activity)
             adView.adUnitId = adUnitId
             attachAdView(activity, frameLayout, adView)
@@ -134,19 +182,13 @@ class BannerAdLoader: IBannerAdLoader {
                 override fun onAdFailedToLoad(adError: LoadAdError) {
                     super.onAdFailedToLoad(adError)
                     Log.d(TAG, "Monetization :- onBannerAdFailed: ${adError.message}")
-                    if (frameLayout.visibility == View.VISIBLE) {
-                        frameLayout.visibility = View.GONE
-                    }
-                    shimmerFrameLayout?.stopShimmer()
-                    shimmerFrameLayout?.visibility = View.GONE
+                    collapseFailedBanner(frameLayout, shimmerFrameLayout)
                     AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_ad")
                 }
 
                 override fun onAdLoaded() {
                     super.onAdLoaded()
                     Log.d(TAG, "Monetization :- onBannerAdLoaded:")
-
-
                     shimmerFrameLayout?.stopShimmer()
                     shimmerFrameLayout?.visibility = View.GONE
                     frameLayout.visibility = View.VISIBLE
@@ -160,11 +202,7 @@ class BannerAdLoader: IBannerAdLoader {
                 }
             }
 
-            // Start loading the ad in the background.
             adView.loadAd(adRequest)
-        } catch (e: Exception) {
-            Log.d(TAG, "Monetization :- loadBanner: ${e.message}")
-        }
     }
 
     /**
@@ -182,62 +220,62 @@ class BannerAdLoader: IBannerAdLoader {
                 shimmerFrameLayout?.visibility = View.GONE
                 return
             }
-            frameLayout.visibility = View.GONE
-            shimmerFrameLayout?.startShimmer()
-            shimmerFrameLayout?.visibility = View.VISIBLE
-
-
-            val adView = AdView(activity)
-            adView.adUnitId = adUnitId
-            attachAdView(activity, frameLayout, adView)
-
-            adView.setAdSize(AdSize.MEDIUM_RECTANGLE)
-
-            val adRequest = AdRequest.Builder().build()
-
-            adView.adListener = object : AdListener() {
-                override fun onAdClicked() {
-                    super.onAdClicked()
-                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_CLICKED, "banner_collapsable_ad")
-                }
-
-                override fun onAdClosed() {
-                    super.onAdClosed()
-                }
-
-                override fun onAdFailedToLoad(adError: LoadAdError) {
-                    super.onAdFailedToLoad(adError)
-                    frameLayout.visibility = View.GONE
-                    shimmerFrameLayout?.stopShimmer()
-                    shimmerFrameLayout?.visibility = View.GONE
-                    Log.d(TAG, "Monetization :- onMediumRectangleAdFailed: ${adError.message}")
-                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_memrec_ad")
-                }
-
-                override fun onAdLoaded() {
-                    super.onAdLoaded()
-
-                    shimmerFrameLayout?.stopShimmer()
-                    shimmerFrameLayout?.visibility = View.GONE
-                    frameLayout.visibility = View.VISIBLE
-                    Log.d(TAG, "Monetization :- onMediumRectangleAdLoaded")
-                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_memrec_ad")
+            val start = {
+                if (!activity.isFinishing && !activity.isDestroyed &&
+                    prepareVisibleSlot(frameLayout, shimmerFrameLayout)
+                ) {
+                    loadMemRecBanner(activity, frameLayout, shimmerFrameLayout, adUnitId)
                 }
             }
-
-            adView.setOnPaidEventListener { adValue ->
-                coroutineScope.launch {
-                    AdsAnalytics.logAppsFlyerRevenue(adView.adUnitId, "MemRecBanner", adValue, activity.application)
-                }
-            }
-            // Start loading the ad in the background.
-            adView.loadAd(adRequest)
+            if (frameLayout.width > 0) start() else frameLayout.post(start)
         } catch (e: Exception) {
-            shimmerFrameLayout?.stopShimmer()
-            shimmerFrameLayout?.visibility = View.GONE
-            frameLayout.visibility = View.GONE
             Log.d(TAG, "loadMediumRectangle: ${e.message}")
         }
+    }
+
+    private fun loadMemRecBanner(
+        activity: Activity,
+        frameLayout: FrameLayout,
+        shimmerFrameLayout: ShimmerFrameLayout?,
+        adUnitId: String,
+    ) {
+        val adView = AdView(activity)
+        adView.adUnitId = adUnitId
+        attachAdView(activity, frameLayout, adView)
+        adView.setAdSize(AdSize.MEDIUM_RECTANGLE)
+        val adRequest = AdRequest.Builder().build()
+        adView.adListener = object : AdListener() {
+            override fun onAdClicked() {
+                super.onAdClicked()
+                AnalyticsManager.getInstance(activity).sendAnalytics(AD_CLICKED, "banner_collapsable_ad")
+            }
+
+            override fun onAdClosed() {
+                super.onAdClosed()
+            }
+
+            override fun onAdFailedToLoad(adError: LoadAdError) {
+                super.onAdFailedToLoad(adError)
+                collapseFailedBanner(frameLayout, shimmerFrameLayout)
+                Log.d(TAG, "Monetization :- onMediumRectangleAdFailed: ${adError.message}")
+                AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_memrec_ad")
+            }
+
+            override fun onAdLoaded() {
+                super.onAdLoaded()
+                shimmerFrameLayout?.stopShimmer()
+                shimmerFrameLayout?.visibility = View.GONE
+                frameLayout.visibility = View.VISIBLE
+                Log.d(TAG, "Monetization :- onMediumRectangleAdLoaded")
+                AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_memrec_ad")
+            }
+        }
+        adView.setOnPaidEventListener { adValue ->
+            coroutineScope.launch {
+                AdsAnalytics.logAppsFlyerRevenue(adView.adUnitId, "MemRecBanner", adValue, activity.application)
+            }
+        }
+        adView.loadAd(adRequest)
     }
 
     /**
@@ -256,56 +294,51 @@ class BannerAdLoader: IBannerAdLoader {
                 shimmerFrameLayout?.visibility = View.GONE
                 return
             }
-            frameLayout.visibility = View.GONE
-            shimmerFrameLayout?.startShimmer()
-            shimmerFrameLayout?.visibility = View.VISIBLE
+            val start = {
+                if (!activity.isFinishing && !activity.isDestroyed &&
+                    prepareVisibleSlot(frameLayout, shimmerFrameLayout)
+                ) {
+                    val adView = AdView(activity)
+                    adView.adUnitId = adUnitId
+                    attachAdView(activity, frameLayout, adView)
+                    val adSize = getAdSize(activity)
+                    adView.setAdSize(adSize)
+                    val extras = Bundle()
+                    if (isTop) extras.putString("collapsible", "top")
+                    else extras.putString("collapsible", "bottom")
+                    val adRequest =
+                        AdRequest.Builder().addNetworkExtrasBundle(AdMobAdapter::class.java, extras).build()
+                    adView.adListener = object : AdListener() {
+                        override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                            super.onAdFailedToLoad(loadAdError)
+                            Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdFailedToLoad: ${loadAdError.message}")
+                            collapseFailedBanner(frameLayout, shimmerFrameLayout)
+                            AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_collapsable_ad")
+                        }
 
-            val adView = AdView(activity)
-            adView.adUnitId = adUnitId
-            attachAdView(activity, frameLayout, adView)
-            if (frameLayout.visibility == View.GONE) frameLayout.visibility = View.VISIBLE
-            val adSize = getAdSize(activity)
-            adView.setAdSize(adSize)
-            val extras = Bundle()
-            if (isTop) extras.putString("collapsible", "top")
-            else extras.putString("collapsible", "bottom")
-            val adRequest =
-                AdRequest.Builder().addNetworkExtrasBundle(AdMobAdapter::class.java, extras).build()
-            adView.loadAd(adRequest)
-            adView.adListener = object : AdListener() {
+                        override fun onAdLoaded() {
+                            super.onAdLoaded()
+                            Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdLoaded")
+                            shimmerFrameLayout?.stopShimmer()
+                            shimmerFrameLayout?.visibility = View.GONE
+                            frameLayout.visibility = View.VISIBLE
+                            AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_collapsable_ad")
+                        }
 
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    super.onAdFailedToLoad(loadAdError)
-                    Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdFailedToLoad: ${loadAdError.message}")
-
-                    shimmerFrameLayout?.stopShimmer()
-                    shimmerFrameLayout?.visibility = View.GONE
-                    frameLayout.visibility = View.GONE
-                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_collapsable_ad")
-                }
-
-                override fun onAdLoaded() {
-                    super.onAdLoaded()
-                    Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdLoaded")
-
-                    shimmerFrameLayout?.stopShimmer()
-                    shimmerFrameLayout?.visibility = View.GONE
-                    frameLayout.visibility = View.VISIBLE
-                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_collapsable_ad")
-                }
-
-                override fun onAdClicked() {
-                    super.onAdClicked()
-                    AnalyticsManager.getInstance(activity).sendAnalytics(AD_CLICKED, "banner_collapsable_ad")
-                }
-
-            }
-
-            adView.setOnPaidEventListener { adValue ->
-                coroutineScope.launch {
-                    AdsAnalytics.logAppsFlyerRevenue(adView.adUnitId, "CollapsableBanner", adValue, activity.application)
+                        override fun onAdClicked() {
+                            super.onAdClicked()
+                            AnalyticsManager.getInstance(activity).sendAnalytics(AD_CLICKED, "banner_collapsable_ad")
+                        }
+                    }
+                    adView.setOnPaidEventListener { adValue ->
+                        coroutineScope.launch {
+                            AdsAnalytics.logAppsFlyerRevenue(adView.adUnitId, "CollapsableBanner", adValue, activity.application)
+                        }
+                    }
+                    adView.loadAd(adRequest)
                 }
             }
+            if (frameLayout.width > 0) start() else frameLayout.post(start)
         } catch (e: Exception) {
 
             shimmerFrameLayout?.stopShimmer()

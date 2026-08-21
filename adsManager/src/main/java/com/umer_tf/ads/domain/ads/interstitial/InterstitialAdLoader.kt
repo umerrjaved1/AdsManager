@@ -412,9 +412,6 @@ class InterstitialAdLoader(
             showAd(activity, adUnitId, onSuccessListener)
         } else {
             onSuccessListener?.onSuccess(false)
-            // Warm this unit so the next eligible trigger is not a cold load.
-            emit(adUnitId, AdEvent.NEXT_PRELOAD_STARTED, stateOf(adUnitId))
-            requestAd(adUnitId, null)
         }
     }
 
