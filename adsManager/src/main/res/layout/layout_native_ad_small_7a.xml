@@ -1,99 +1,177 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
+
+<com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/native_ad_view"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    >
+    android:layout_height="124dp"
+    android:minHeight="124dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/clAd"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="12dp">
+        android:layout_height="match_parent"
+        android:background="@drawable/cta_small_1a_shape"
+        android:paddingStart="12dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="10dp">
 
+        <!-- App Icon -->
         <ImageView
             android:id="@+id/ad_app_icon"
-            android:layout_width="@dimen/ad_icon_large"
-            android:layout_height="@dimen/ad_icon_large"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:clipToOutline="true"
+            android:scaleType="centerCrop"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent"
+            tools:src="@tools:sample/avatars" />
 
+        <!-- Headline -->
+        <TextView
+            android:id="@+id/ad_headline"
+            android:layout_width="0dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="4dp"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:text="@string/test_ad"
+            android:textColor="@color/ad_heading_color"
+            android:textSize="14sp"
+            app:fontFamily="@font/inter_bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toTopOf="@id/ad_app_icon" />
+
+        <!-- AD Badge -->
         <TextView
             android:id="@+id/ad_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="2dp"
             android:background="@drawable/adlibrary_ad_badge_border"
+            android:gravity="center"
             android:paddingHorizontal="4dp"
             android:paddingVertical="1dp"
             android:text="@string/ad"
             android:textColor="@color/ad_badge_text"
             android:textSize="@dimen/ad_text_badge"
-            android:textStyle="bold"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
+            app:fontFamily="@font/inter_bold"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/ad_headline"
             tools:ignore="SmallSp" />
 
-        <TextView
-            android:id="@+id/ad_headline"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="8dp"
-            android:ellipsize="end"
-            android:fontFamily="@font/inter_semibold"
-            android:includeFontPadding="false"
-            android:maxLines="2"
-            android:textColor="@color/ad_heading_color"
-            android:textSize="@dimen/ad_text_headline"
-            app:layout_constraintEnd_toStartOf="@id/ad_badge"
-            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_goneMarginStart="0dp"
-            tools:text="SadaPay: Money..." />
-
-        <androidx.constraintlayout.widget.Barrier
-            android:id="@+id/barrier_top"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:barrierDirection="bottom"
-            app:constraint_referenced_ids="ad_app_icon,ad_headline,ad_badge" />
-
+        <!-- Body -->
         <TextView
             android:id="@+id/ad_body"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_height="18dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="4dp"
             android:ellipsize="end"
-            android:fontFamily="@font/inter"
-            android:includeFontPadding="false"
-            android:maxLines="2"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:text="Financial freedom, the Sada way!"
             android:textColor="@color/onSurfaceVariant"
-            android:textSize="@dimen/ad_text_body"
+            android:textSize="11sp"
+            app:fontFamily="@font/inter_medium"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/barrier_top"
-            tools:text="Financial freedom, the Sada way!" />
+            app:layout_constraintStart_toEndOf="@id/ad_badge"
+            app:layout_constraintTop_toBottomOf="@id/ad_headline" />
 
+        <!-- Tagline -->
+        <TextView
+            android:id="@+id/ad_tagline"
+            android:layout_width="0dp"
+            android:layout_height="18dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="4dp"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:maxLines="2"
+            android:text="Make payments faster than you think."
+            android:textColor="@color/onSurfaceVariant"
+            android:textSize="11sp"
+            app:fontFamily="@font/inter"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ad_app_icon"
+            app:layout_constraintTop_toBottomOf="@id/ad_body" />
+
+        <!-- CTA -->
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/ad_call_to_action"
+            style="?android:attr/borderlessButtonStyle"
             android:layout_width="0dp"
-            android:layout_height="@dimen/ad_cta_height"
-            android:layout_marginTop="12dp"
+            android:layout_height="42dp"
+            android:layout_marginTop="10dp"
             android:background="@drawable/cta_small_1a_shape"
             android:clickable="true"
-            android:ellipsize="end"
+            android:elevation="0dp"
             android:focusable="true"
-            android:fontFamily="@font/inter_bold"
-            android:gravity="center"
-            android:maxLines="1"
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:text="@string/install"
+            android:textAllCaps="false"
             android:textColor="#FFFFFF"
-            android:textSize="@dimen/ad_text_cta"
+            android:textSize="14sp"
+            app:fontFamily="@font/inter_bold"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- Hidden Native Assets -->
+
+        <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
+            android:id="@+id/ad_media"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ad_body" />
+            app:layout_constraintTop_toBottomOf="@id/ad_call_to_action" />
+
+        <TextView
+            android:id="@+id/ad_advertiser"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ad_call_to_action" />
+
+        <RatingBar
+            android:id="@+id/ad_stars"
+            style="?android:attr/ratingBarStyleSmall"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ad_call_to_action" />
+
+        <TextView
+            android:id="@+id/ad_price"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/ad_store"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ad_call_to_action" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
+
 </com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView>
