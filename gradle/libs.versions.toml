@@ -10,7 +10,8 @@ shimmer = "0.5.0"
 sspAndroid = "1.1.1"
 sdpAndroid = "1.1.1"
 firebaseBom = "34.14.1"
-playServicesAds = "25.3.0"
+adsMobileSdk = "1.4.0"
+userMessagingPlatform = "4.0.0"
 lifecycleProcess = "2.10.0"
 constraintlayout = "2.2.1"
 material = "1.14.0"
@@ -28,7 +29,8 @@ androidx-constraintlayout = { group = "androidx.constraintlayout", name = "const
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 
-play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+ads-mobile-sdk = { module = "com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk", version.ref = "adsMobileSdk" }
+user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "userMessagingPlatform" }
 
 shimmer = { module = "com.facebook.shimmer:shimmer", version.ref = "shimmer" }
 

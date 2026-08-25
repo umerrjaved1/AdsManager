@@ -5,14 +5,17 @@ import android.app.Application
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.appopen.AppOpenAd
+import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAd
+import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
 import com.umer_tf.ads.domain.core.AdSlotState
+import com.umer_tf.ads.domain.core.AdsInitializer
 import com.umer_tf.ads.domain.core.FullScreenGate
 import com.umer_tf.ads.domain.diagnostics.AdEvent
 import com.umer_tf.ads.domain.diagnostics.AdEventLog
@@ -21,6 +24,7 @@ import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_DISMISSED
 import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_SHOWN
 import com.umer_tf.ads.domain.utils.AnalyticsManager
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
+import com.umer_tf.ads.domain.utils.onMain
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -94,29 +98,33 @@ internal abstract class AppOpenSlotManager(
         onSuccessListener?.let { waiters.add(it) }
         emit(AdEvent.REQUEST_STARTED)
 
-        AppOpenAd.load(
-            context,
-            unitId,
-            AdRequest.Builder().build(),
-            object : AppOpenAd.AppOpenAdLoadCallback() {
-                override fun onAdLoaded(ad: AppOpenAd) {
-                    appOpenAd = ad
-                    state = AdSlotState.READY
-                    loadTimeElapsed = SystemClock.elapsedRealtime()
-                    Log.d(tag, "Monetization :- $gateOwner - onAdLoaded.")
-                    emit(AdEvent.LOAD_SUCCESS)
-                    emit(AdEvent.READY)
-                    settle(true)
-                }
+        // The Next-Gen SDK will not serve a request made before initialization completes, and it
+        // no longer self-initializes, so the request is deferred rather than dropped.
+        AdsInitializer.runWhenInitialized(context) {
+            AppOpenAd.load(
+                AdRequest.Builder(unitId).build(),
+                object : AdLoadCallback<AppOpenAd> {
+                    // Next-Gen delivers load callbacks on a background thread; the slot fields and
+                    // the waiter list are main-thread-only state.
+                    override fun onAdLoaded(ad: AppOpenAd) = onMain {
+                        appOpenAd = ad
+                        state = AdSlotState.READY
+                        loadTimeElapsed = SystemClock.elapsedRealtime()
+                        Log.d(tag, "Monetization :- $gateOwner - onAdLoaded.")
+                        emit(AdEvent.LOAD_SUCCESS)
+                        emit(AdEvent.READY)
+                        settle(true)
+                    }
 
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    state = AdSlotState.FAILED
-                    Log.d(tag, "Monetization :- $gateOwner - onAdFailedToLoad: ${loadAdError.message}")
-                    emit(AdEvent.LOAD_FAILURE, loadAdError.message)
-                    settle(false)
+                    override fun onAdFailedToLoad(adError: LoadAdError) = onMain {
+                        state = AdSlotState.FAILED
+                        Log.d(tag, "Monetization :- $gateOwner - onAdFailedToLoad: ${adError.message}")
+                        emit(AdEvent.LOAD_FAILURE, adError.message)
+                        settle(false)
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 
     private fun settle(success: Boolean) {
@@ -162,8 +170,10 @@ internal abstract class AppOpenSlotManager(
             FullScreenGate.release(gateOwner)
         }
 
-        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-            override fun onAdShowedFullScreenContent() {
+        // One callback object now carries the full-screen events *and* the paid event that used to
+        // arrive through the separate `setOnPaidEventListener`.
+        ad.adEventCallback = object : AppOpenAdEventCallback {
+            override fun onAdShowedFullScreenContent() = onMain {
                 // Consumed at display time, not at dismissal: an app-open ad shows exactly once,
                 // and leaving it cached invited a second show attempt against a dead ad.
                 appOpenAd = null
@@ -174,33 +184,42 @@ internal abstract class AppOpenSlotManager(
                 Log.d(tag, "Monetization :- $gateOwner - onAdShowedFullScreenContent.")
             }
 
-            override fun onAdDismissedFullScreenContent() {
+            override fun onAdDismissedFullScreenContent() = onMain {
                 releaseGate()
                 state = AdSlotState.IDLE
                 onStateChange(false)
                 emit(AdEvent.DISMISSED)
                 AnalyticsManager.getInstance(application).sendAnalytics(AD_DISMISSED, analyticsLabel)
+                // Next-Gen ads hold native resources until released; a shown app-open ad can
+                // never be displayed again, so this is the last point at which it is useful.
+                ad.destroy()
                 onShowAdCompleteListener.onSuccess(true)
             }
 
-            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+            override fun onAdFailedToShowFullScreenContent(
+                fullScreenContentError: FullScreenContentError
+            ) = onMain {
                 releaseGate()
                 appOpenAd = null
                 loadTimeElapsed = 0L
                 state = AdSlotState.IDLE
                 onStateChange(false)
-                emit(AdEvent.SHOW_FAILED, adError.message)
-                Log.d(tag, "Monetization :- $gateOwner - onAdFailedToShow: ${adError.message}")
+                emit(AdEvent.SHOW_FAILED, fullScreenContentError.message)
+                Log.d(
+                    tag,
+                    "Monetization :- $gateOwner - onAdFailedToShow: ${fullScreenContentError.message}"
+                )
+                ad.destroy()
                 onShowAdCompleteListener.onSuccess(false)
             }
-        }
 
-        ad.setOnPaidEventListener { adValue ->
-            val unitId = ad.adUnitId
-            CoroutineScope(Dispatchers.IO).launch {
-                runCatching {
-                    AdsAnalytics.logAppsFlyerRevenue(unitId, analyticsLabel, adValue, application)
-                }.onFailure { Log.e(tag, "Failed to log $gateOwner revenue", it) }
+            override fun onAdPaid(value: AdValue) {
+                val unitId = ad.adUnitId
+                CoroutineScope(Dispatchers.IO).launch {
+                    runCatching {
+                        AdsAnalytics.logAppsFlyerRevenue(unitId, analyticsLabel, value, application)
+                    }.onFailure { Log.e(tag, "Failed to log $gateOwner revenue", it) }
+                }
             }
         }
 
@@ -226,6 +245,7 @@ internal abstract class AppOpenSlotManager(
         if (isAdExpired()) {
             Log.d(tag, "Monetization :- $gateOwner - cached ad expired")
             emit(AdEvent.AD_EXPIRED)
+            appOpenAd?.destroy()
             appOpenAd = null
             loadTimeElapsed = 0L
             state = AdSlotState.IDLE
@@ -236,6 +256,7 @@ internal abstract class AppOpenSlotManager(
 
     fun destroy() {
         if (appOpenAd != null) emit(AdEvent.AD_DESTROYED)
+        appOpenAd?.destroy()
         appOpenAd = null
         waiters.clear()
         loadTimeElapsed = 0L

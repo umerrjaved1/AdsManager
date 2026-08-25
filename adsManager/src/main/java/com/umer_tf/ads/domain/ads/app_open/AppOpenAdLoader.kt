@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.google.android.gms.ads.AdActivity
+import com.google.android.libraries.ads.mobile.sdk.common.AdActivity
 import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.core.AdMobManager
 import com.umer_tf.ads.domain.core.AdSlotState

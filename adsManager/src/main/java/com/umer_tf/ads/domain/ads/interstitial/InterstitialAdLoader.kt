@@ -7,17 +7,19 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.MainThread
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.interstitial.InterstitialAd
-import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
 import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
 import com.umer_tf.ads.domain.core.AdSlotState
+import com.umer_tf.ads.domain.core.AdsInitializer
 import com.umer_tf.ads.domain.core.FullScreenGate
 import com.umer_tf.ads.domain.diagnostics.AdEvent
 import com.umer_tf.ads.domain.diagnostics.AdEventLog
@@ -33,6 +35,7 @@ import com.umer_tf.ads.domain.utils.AnalyticsManager
 import com.umer_tf.ads.domain.utils.LoadingDialogUtil
 import com.umer_tf.ads.domain.utils.TimeManager
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
+import com.umer_tf.ads.domain.utils.onMain
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,6 +104,7 @@ class InterstitialAdLoader(
         if (slot.isExpired()) {
             Log.d(TAG, "Monetization :- cached interstitial for $adUnitId expired")
             emit(adUnitId, AdEvent.AD_EXPIRED, slot.state)
+            slot.ad?.destroy()
             slot.ad = null
             slot.state = AdSlotState.IDLE
             slot.loadedAtElapsed = 0L
@@ -161,33 +165,39 @@ class InterstitialAdLoader(
         onResult?.let { slot.waiters.add(it) }
         emit(adUnitId, AdEvent.REQUEST_STARTED, slot.state)
 
-        InterstitialAd.load(
-            context,
-            adUnitId,
-            AdRequest.Builder().build(),
-            object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(ad: InterstitialAd) {
-                    slot.ad = ad
-                    slot.state = AdSlotState.READY
-                    slot.loadedAtElapsed = SystemClock.elapsedRealtime()
-                    Log.d(TAG, "Monetization :- onAdLoaded ($adUnitId)")
-                    emit(adUnitId, AdEvent.LOAD_SUCCESS, slot.state)
-                    emit(adUnitId, AdEvent.READY, slot.state)
-                    AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "Interstitial_ad")
-                    settleWaiters(slot, true)
-                }
+        // Next-Gen no longer self-initializes and drops requests made before it is ready, so the
+        // request is deferred behind initialization instead of being fired and lost.
+        AdsInitializer.runWhenInitialized(context) {
+            InterstitialAd.load(
+                AdRequest.Builder(adUnitId).build(),
+                object : AdLoadCallback<InterstitialAd> {
+                    // Load callbacks arrive on a background thread in Next-Gen; the slot map and
+                    // its waiter list are documented as main-thread-only, hence the marshalling.
+                    override fun onAdLoaded(ad: InterstitialAd) = onMain {
+                        slot.ad = ad
+                        slot.state = AdSlotState.READY
+                        slot.loadedAtElapsed = SystemClock.elapsedRealtime()
+                        Log.d(TAG, "Monetization :- onAdLoaded ($adUnitId)")
+                        emit(adUnitId, AdEvent.LOAD_SUCCESS, slot.state)
+                        emit(adUnitId, AdEvent.READY, slot.state)
+                        AnalyticsManager.getInstance(context)
+                            .sendAnalytics(AD_LOADED, "Interstitial_ad")
+                        settleWaiters(slot, true)
+                    }
 
-                override fun onAdFailedToLoad(error: LoadAdError) {
-                    slot.ad = null
-                    slot.state = AdSlotState.FAILED
-                    slot.loadedAtElapsed = 0L
-                    Log.d(TAG, "Monetization :- onAdFailedToLoad ($adUnitId): ${error.message}")
-                    emit(adUnitId, AdEvent.LOAD_FAILURE, slot.state, error.message)
-                    AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "Interstitial_ad")
-                    settleWaiters(slot, false)
+                    override fun onAdFailedToLoad(adError: LoadAdError) = onMain {
+                        slot.ad = null
+                        slot.state = AdSlotState.FAILED
+                        slot.loadedAtElapsed = 0L
+                        Log.d(TAG, "Monetization :- onAdFailedToLoad ($adUnitId): ${adError.message}")
+                        emit(adUnitId, AdEvent.LOAD_FAILURE, slot.state, adError.message)
+                        AnalyticsManager.getInstance(context)
+                            .sendAnalytics(AD_FAILED, "Interstitial_ad")
+                        settleWaiters(slot, false)
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 
     // ---------------------------------------------------------------------------------------
@@ -249,7 +259,11 @@ class InterstitialAdLoader(
     fun stateOf(adUnitId: String): AdSlotState = slots[adUnitId]?.state ?: AdSlotState.IDLE
 
     override fun destroy() {
-        slots.values.forEach { it.waiters.clear() }
+        slots.values.forEach {
+            it.waiters.clear()
+            it.ad?.destroy()
+            it.ad = null
+        }
         slots.clear()
         job?.cancel()
         mInterstitialAdCounter = 0
@@ -294,8 +308,10 @@ class InterstitialAdLoader(
             FullScreenGate.release(GATE_OWNER)
         }
 
-        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-            override fun onAdShowedFullScreenContent() {
+        // Full-screen events and the paid event share one callback object in Next-Gen; there is no
+        // separate `setOnPaidEventListener` any more.
+        ad.adEventCallback = object : InterstitialAdEventCallback {
+            override fun onAdShowedFullScreenContent() = onMain {
                 job?.cancel()
                 adController.shouldShowOpenAd = false
                 // Consumed: an interstitial displays exactly once.
@@ -308,7 +324,7 @@ class InterstitialAdLoader(
                 AnalyticsManager.getInstance(context).sendAnalytics(SHOWING_AD, "Interstitial_ad")
             }
 
-            override fun onAdDismissedFullScreenContent() {
+            override fun onAdDismissedFullScreenContent() = onMain {
                 releaseGate()
                 TimeManager.getInstance().reset()
                 mInterstitialAdCounter = 0
@@ -316,35 +332,42 @@ class InterstitialAdLoader(
                 slot.state = AdSlotState.IDLE
                 emit(adUnitId, AdEvent.DISMISSED, slot.state)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_DISMISSED, "Interstitial_ad")
+                // A shown interstitial can never display again; release its native resources.
+                ad.destroy()
                 onDialogDismiss?.invoke()
                 onSuccessListener?.onSuccess(true)
             }
 
-            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+            override fun onAdFailedToShowFullScreenContent(
+                fullScreenContentError: FullScreenContentError
+            ) = onMain {
                 releaseGate()
                 slot.ad = null
                 slot.state = AdSlotState.IDLE
                 slot.loadedAtElapsed = 0L
-                emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, adError.message)
-                Log.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent: ${adError.message}")
+                emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, fullScreenContentError.message)
+                Log.d(
+                    TAG,
+                    "Monetization :- onAdFailedToShowFullScreenContent: ${fullScreenContentError.message}"
+                )
+                ad.destroy()
                 onDialogDismiss?.invoke()
                 onSuccessListener?.onSuccess(false)
             }
 
-            override fun onAdClicked() {
-                super.onAdClicked()
+            override fun onAdClicked() = onMain {
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "Interstitial_ad")
             }
-        }
 
-        ad.setOnPaidEventListener { adValue ->
-            coroutineScope.launch {
-                AdsAnalytics.logAppsFlyerRevenue(
-                    ad.adUnitId,
-                    "Interstitial",
-                    adValue,
-                    activity.application
-                )
+            override fun onAdPaid(value: AdValue) {
+                coroutineScope.launch {
+                    AdsAnalytics.logAppsFlyerRevenue(
+                        adUnitId,
+                        "Interstitial",
+                        value,
+                        activity.application
+                    )
+                }
             }
         }
 

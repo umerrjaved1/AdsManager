@@ -18,6 +18,16 @@
         <item name="android:background">@drawable/bg_square_yellow</item>
     </style>
 
-    <style name="AdmobTheme"/>
+    <!--
+      Theme applied to the SDK's AdActivity via tools:replace in AndroidManifest.xml.
+
+      It MUST inherit Theme.GoogleMobileAds. That theme is @android:style/Theme.Translucent plus
+      windowNoTitle and transparent system bars, and the SDK's full-screen formats are drawn
+      assuming it. This style used to be empty and parentless, which meant the tools:replace
+      handed AdActivity a theme with no attributes at all - an opaque, titled window - instead of
+      the translucent one Google ships. It exists only as an override hook for hosts; keep the
+      parent on every variant of it.
+    -->
+    <style name="AdmobTheme" parent="@style/Theme.GoogleMobileAds"/>
 
 </resources>

@@ -15,16 +15,17 @@ import androidx.annotation.MainThread
 import androidx.appcompat.widget.AppCompatButton
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdLoader
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.VideoController
-import com.google.android.gms.ads.VideoOptions
-import com.google.android.gms.ads.nativead.MediaView
-import com.google.android.gms.ads.nativead.NativeAd
-import com.google.android.gms.ads.nativead.NativeAdOptions
-import com.google.android.gms.ads.nativead.NativeAdView
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.google.android.libraries.ads.mobile.sdk.common.VideoController
+import com.google.android.libraries.ads.mobile.sdk.common.VideoOptions
+import com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoader
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoaderCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView
 import com.umer_tf.ads.R
 import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
 import com.umer_tf.ads.domain.ads.listeners.OnSuccessListenerNative
@@ -32,6 +33,7 @@ import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.apps_flyer.AdsAnalytics
 import com.umer_tf.ads.domain.core.AdSlotState
+import com.umer_tf.ads.domain.core.AdsInitializer
 import com.umer_tf.ads.domain.diagnostics.AdEvent
 import com.umer_tf.ads.domain.diagnostics.AdEventLog
 import com.umer_tf.ads.domain.diagnostics.AdFormat
@@ -41,6 +43,7 @@ import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_LOADED
 import com.umer_tf.ads.domain.utils.AnalyticsConstants.AD_SHOWN
 import com.umer_tf.ads.domain.utils.AnalyticsManager
 import com.umer_tf.ads.domain.utils.Utilities.shouldShowAd
+import com.umer_tf.ads.domain.utils.onMain
 import com.umer_tf.ads.domain.utils.showToast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -140,13 +143,13 @@ class NativeAd(
     }
 
     /** Renders [ad] into the builder's frame, destroying whatever that frame held before. */
-    private fun bindToFrame(ad: NativeAd, builder: NativeAdBuilder) {
+    private fun bindToFrame(ad: NativeAd, builder: NativeAdBuilder, adUnitId: String) {
         val adView = LayoutInflater.from(context).inflate(
             if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout,
             null
         ) as NativeAdView
 
-        populateNativeAdView(ad, adView, builder)
+        populateNativeAdView(ad, adView, builder, adUnitId)
 
         builder.frameLayout?.let { frame ->
             adsByFrame.put(frame, ad)?.takeIf { it !== ad }?.destroy()
@@ -198,8 +201,8 @@ class NativeAd(
             emit(adUnitId, AdEvent.REQUEST_SKIPPED_CACHED)
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
-            bindToFrame(cached, builder)
-            attachPaidEventListener(cached, adUnitId)
+            bindToFrame(cached, builder, adUnitId)
+            attachEventCallback(cached, adUnitId)
             onSuccessListener?.onSuccess(true)
             return
         }
@@ -256,8 +259,8 @@ class NativeAd(
                 mine != null -> {
                     builder.shimmerFrameLayout?.stopShimmer()
                     builder.shimmerFrameLayout?.visibility = View.GONE
-                    bindToFrame(mine, builder)
-                    attachPaidEventListener(mine, adUnitId)
+                    bindToFrame(mine, builder, adUnitId)
+                    attachEventCallback(mine, adUnitId)
                     onSuccessListener?.onSuccess(true)
                 }
                 // Another waiter already started the next request — queue behind it.
@@ -269,19 +272,50 @@ class NativeAd(
         }
     }
 
-    /** Reports this ad's revenue to AppsFlyer under [adUnitId]. */
-    private fun attachPaidEventListener(ad: NativeAd, adUnitId: String) {
-        ad.setOnPaidEventListener { adValue ->
-            CoroutineScope(Dispatchers.IO).launch {
-                AdsAnalytics.logAppsFlyerRevenue(
-                    adUnitId,
-                    "Native",
-                    adValue,
-                    context.applicationContext
-                )
+    /**
+     * Attaches the per-ad event callback for [adUnitId].
+     *
+     * In the legacy SDK clicks and impressions came from the `AdLoader`'s `AdListener` and revenue
+     * from a separate `setOnPaidEventListener`. Next-Gen moves all three onto the ad object itself,
+     * so this is attached the moment an ad arrives - including preloads, which is what keeps a
+     * "loaded now, rendered later" native reporting its impression.
+     */
+    private fun attachEventCallback(
+        ad: NativeAd,
+        adUnitId: String,
+        analyticsLabel: String = "NativeAd",
+        revenueLabel: String = "Native",
+    ) {
+        ad.adEventCallback = object : NativeAdEventCallback {
+            override fun onAdClicked() = onMain {
+                Log.d(TAG, "Monetization :- onAdClicked()")
+                AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, analyticsLabel)
+            }
+
+            override fun onAdImpression() = onMain {
+                emit(adUnitId, AdEvent.SHOW_STARTED)
+                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, analyticsLabel)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    AdsAnalytics.logAppsFlyerRevenue(
+                        adUnitId,
+                        revenueLabel,
+                        value,
+                        context.applicationContext
+                    )
+                }
             }
         }
     }
+
+    /** Builds the request shared by every native path in this loader. */
+    private fun nativeRequest(adUnitId: String): NativeAdRequest =
+        NativeAdRequest.Builder(adUnitId, listOf(NativeAd.NativeAdType.NATIVE))
+            // `NativeAdOptions` is gone; video options are declared on the request itself.
+            .setVideoOptions(VideoOptions.Builder().setStartMuted(false).build())
+            .build()
 
     /**
      * Requests a native for [adUnitId] and renders it into the builder's frame.
@@ -303,82 +337,56 @@ class NativeAd(
         inFlight.add(adUnitId)
         emit(adUnitId, AdEvent.REQUEST_STARTED)
 
-        var cachedBecauseNotVisible = false
-        val adBuilder = AdLoader.Builder(context, adUnitId)
-        adBuilder.forNativeAd { nativeAd ->
-            // Binding into a finishing Activity or an off-screen / GONE frame is a match with
-            // no impression. Keep the fill for the next loadAndShow of this same unit.
-            if (!canPaintNative(activity, builder.frameLayout)) {
-                Log.d(TAG, "Monetization :- loadAndShow fill not paintable — caching $adUnitId")
-                putInCache(adUnitId, nativeAd)
-                cachedBecauseNotVisible = true
-                return@forNativeAd
-            }
-            bindToFrame(nativeAd, builder)
-            attachPaidEventListener(nativeAd, adUnitId)
-        }
+        // Next-Gen replaces `AdLoader.Builder(...).forNativeAd(...).withAdListener(...)` with a
+        // single NativeAdLoaderCallback, and the click / impression / paid events move onto the ad
+        // itself. Both callbacks land on a background thread, so everything below is marshalled
+        // back before it touches the cache, the waiter list or the placeholder views.
+        AdsInitializer.runWhenInitialized(context) {
+            NativeAdLoader.load(nativeRequest(adUnitId), object : NativeAdLoaderCallback {
+                override fun onNativeAdLoaded(nativeAd: NativeAd) = onMain {
+                    Log.d(
+                        "AdmobNative",
+                        "Monetization :- onAdLoaded (loadAndShow): Admob ${activity.javaClass.simpleName}"
+                    )
+                    inFlight.remove(adUnitId)
+                    emit(adUnitId, AdEvent.LOAD_SUCCESS)
+                    builder.shimmerFrameLayout?.stopShimmer()
+                    builder.shimmerFrameLayout?.visibility = View.GONE
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
+                    attachEventCallback(nativeAd, adUnitId)
 
-        val videoOptions = VideoOptions.Builder().setStartMuted(false).build()
-
-        val adOptions = NativeAdOptions.Builder().setVideoOptions(videoOptions).build()
-
-        adBuilder.withNativeAdOptions(adOptions)
-
-        val adLoader = adBuilder.withAdListener(object : AdListener() {
-            override fun onAdClicked() {
-                super.onAdClicked()
-                Log.d(TAG, "Monetization :- onAdClicked()")
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, "NativeAd")
-            }
-
-            override fun onAdClosed() {
-                super.onAdClosed()
-            }
-
-            override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                super.onAdFailedToLoad(loadAdError)
-                Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + loadAdError.message)
-                inFlight.remove(adUnitId)
-                emit(adUnitId, AdEvent.LOAD_FAILURE, loadAdError.message)
-                // No-fill must clear the placeholder: leaving it running is what made empty
-                // shimmers pulse forever on screens whose ad never arrived.
-                builder.shimmerFrameLayout?.stopShimmer()
-                builder.shimmerFrameLayout?.visibility = View.GONE
-                builder.frameLayout?.visibility = View.GONE
-                onSuccessListener?.onSuccess(false)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
-                settleWaiters(adUnitId, null)
-            }
-
-            override fun onAdLoaded() {
-                super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob ${activity.javaClass.simpleName}")
-                inFlight.remove(adUnitId)
-                emit(adUnitId, AdEvent.LOAD_SUCCESS)
-                builder.shimmerFrameLayout?.stopShimmer()
-                builder.shimmerFrameLayout?.visibility = View.GONE
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
-                if (cachedBecauseNotVisible) {
-                    emit(adUnitId, AdEvent.READY)
-                    onSuccessListener?.onSuccess(false)
-                    settleWaiters(adUnitId, cachedAdFor(adUnitId))
-                    return
+                    // Binding into a finishing Activity or an off-screen / GONE frame is a match
+                    // with no impression. Keep the fill for the next loadAndShow of this same unit.
+                    if (!canPaintNative(activity, builder.frameLayout)) {
+                        Log.d(TAG, "Monetization :- loadAndShow fill not paintable — caching $adUnitId")
+                        putInCache(adUnitId, nativeAd)
+                        emit(adUnitId, AdEvent.READY)
+                        onSuccessListener?.onSuccess(false)
+                        settleWaiters(adUnitId, cachedAdFor(adUnitId))
+                        return@onMain
+                    }
+                    bindToFrame(nativeAd, builder, adUnitId)
+                    onSuccessListener?.onSuccess(true)
+                    // This ad went into a frame, not the cache, so joiners get null and start their
+                    // own request instead of rendering the same object into a second view.
+                    settleWaiters(adUnitId, null)
                 }
-                onSuccessListener?.onSuccess(true)
-                // This ad went into a frame, not the cache, so joiners get null and start their
-                // own request instead of rendering the same object into a second view.
-                settleWaiters(adUnitId, null)
-            }
 
-            override fun onAdImpression() {
-                super.onAdImpression()
-                emit(adUnitId, AdEvent.SHOW_STARTED)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd")
-                Log.d("AdmobNative", "Monetization :- onAdImpression (loadAndShow): Admob ${activity.javaClass.simpleName}")
-            }
-        }).build()
-
-        adLoader.loadAd(AdRequest.Builder().build())
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMain {
+                    Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + adError.message)
+                    inFlight.remove(adUnitId)
+                    emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
+                    // No-fill must clear the placeholder: leaving it running is what made empty
+                    // shimmers pulse forever on screens whose ad never arrived.
+                    builder.shimmerFrameLayout?.stopShimmer()
+                    builder.shimmerFrameLayout?.visibility = View.GONE
+                    builder.frameLayout?.visibility = View.GONE
+                    onSuccessListener?.onSuccess(false)
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
+                    settleWaiters(adUnitId, null)
+                }
+            })
+        }
     }
 
     /**
@@ -419,59 +427,42 @@ class NativeAd(
         inFlight.add(adUnitId)
         emit(adUnitId, AdEvent.REQUEST_STARTED)
 
-        val adBuilder = AdLoader.Builder(context, adUnitId)
-        adBuilder.forNativeAd { nativeAd ->
-            putInCache(adUnitId, nativeAd)
-            onSuccessListener?.onSuccess(true,nativeAd)
+        AdsInitializer.runWhenInitialized(context) {
+            NativeAdLoader.load(nativeRequest(adUnitId), object : NativeAdLoaderCallback {
+                override fun onNativeAdLoaded(nativeAd: NativeAd) = onMain {
+                    Log.d(
+                        "AdmobNative",
+                        "Monetization :- onAdLoaded (loadAd): Admob ${activity.javaClass.simpleName}"
+                    )
+                    inFlight.remove(adUnitId)
+                    // The impression event now rides on the ad object, so it has to be attached
+                    // here - a preloaded native that is rendered later would otherwise report
+                    // `filled N shown 0` however well it was actually performing.
+                    attachEventCallback(nativeAd, adUnitId)
+                    putInCache(adUnitId, nativeAd)
+                    // LOAD_SUCCESS is what the funnel counts as a fill. Emitting only READY here
+                    // meant preloaded natives were invisible to it, so `filled` had to be derived
+                    // by summing two events - which double-counted every path that emits both.
+                    emit(adUnitId, AdEvent.LOAD_SUCCESS)
+                    emit(adUnitId, AdEvent.READY)
+                    context.showToast("Native ad loaded")
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
+                    onSuccessListener?.onSuccess(true, nativeAd)
+                    // Preload: the ad is in the cache, so joiners may render it themselves.
+                    settleWaiters(adUnitId, cachedAdFor(adUnitId))
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMain {
+                    Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + adError.message)
+                    inFlight.remove(adUnitId)
+                    emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
+                    context.showToast("Failed to load native ad")
+                    onSuccessListener?.onSuccess(false, null)
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
+                    settleWaiters(adUnitId, null)
+                }
+            })
         }
-
-        val videoOptions = VideoOptions.Builder().setStartMuted(false).build()
-        val adOptions = NativeAdOptions.Builder().setVideoOptions(videoOptions).build()
-        adBuilder.withNativeAdOptions(adOptions)
-
-        val adLoader = adBuilder.withAdListener(object : AdListener() {
-            override fun onAdClicked() {
-                super.onAdClicked()
-                Log.d(TAG, "onAdClicked()")
-            }
-
-            override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                super.onAdFailedToLoad(loadAdError)
-                Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + loadAdError.message)
-                inFlight.remove(adUnitId)
-                emit(adUnitId, AdEvent.LOAD_FAILURE, loadAdError.message)
-                context.showToast("Failed to load native ad")
-                onSuccessListener?.onSuccess(false,null)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
-                settleWaiters(adUnitId, null)
-            }
-
-            override fun onAdLoaded() {
-                super.onAdLoaded()
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob ${activity.javaClass.simpleName}")
-                inFlight.remove(adUnitId)
-                // LOAD_SUCCESS is what the funnel counts as a fill. Emitting only READY here
-                // meant preloaded natives were invisible to it, so `filled` had to be derived
-                // by summing two events - which double-counted every path that emits both.
-                emit(adUnitId, AdEvent.LOAD_SUCCESS)
-                emit(adUnitId, AdEvent.READY)
-                context.showToast("Native ad loaded")
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "NativeAd")
-                // Preload: the ad is in the cache, so joiners may render it themselves.
-                settleWaiters(adUnitId, cachedAdFor(adUnitId))
-            }
-
-            override fun onAdImpression() {
-                super.onAdImpression()
-                // Without this the preload path recorded no impression at all, so a unit that
-                // was preloaded and then rendered reported `filled N shown 0` however well it
-                // was actually performing.
-                emit(adUnitId, AdEvent.SHOW_STARTED)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "NativeAd" )
-            }
-        }).build()
-
-        adLoader.loadAd(AdRequest.Builder().build())
     }
 
     /**
@@ -501,8 +492,8 @@ class NativeAd(
         builder.shimmerFrameLayout?.visibility = View.GONE
         Log.d("AdmobNative", "Monetization :- (show loaded) ${activity.javaClass.simpleName}")
         emit(adUnitId, AdEvent.SHOW_REQUESTED, activity.javaClass.simpleName)
-        bindToFrame(ad, builder)
-        attachPaidEventListener(ad, adUnitId)
+        bindToFrame(ad, builder, adUnitId)
+        attachEventCallback(ad, adUnitId)
     }
 
     override fun destroy() {
@@ -535,7 +526,8 @@ class NativeAd(
     private fun populateNativeAdView(
         nativeAd: NativeAd,
         adView: NativeAdView,
-        builder: NativeAdBuilder
+        builder: NativeAdBuilder,
+        adUnitId: String
     ) {
         try {
 
@@ -583,14 +575,15 @@ class NativeAd(
                 adBody?.setTextColor(adBodyColor.toColorInt())
             }
 
+        // `NativeAdView.mediaView` is read-only in Next-Gen and the media content is no longer
+        // assigned by hand: the MediaView is handed to registerNativeAd below, which binds it.
+        var mediaViewToRegister: MediaView? = null
         if (builder.showMedia) {
             adMedia?.let {
                 it.visibility = View.VISIBLE
                 val adMediaContainer = adView.findViewById<ConstraintLayout>(R.id.constraintLayoutMedia)
                 adMediaContainer?.visibility = View.VISIBLE
-                adView.mediaView = it.apply {
-                    mediaContent = nativeAd.mediaContent
-                }
+                mediaViewToRegister = it
             }
         } else {
             adMedia?.visibility = View.GONE
@@ -657,6 +650,9 @@ class NativeAd(
 
             adView.findViewById<ImageView>(R.id.ad_close)?.setOnClickListener {
                 Log.d(TAG, "Ad Close Clicked")
+                // A native has no full-screen dismissal, so this close is its end-of-life: it is
+                // what closes out the request → load → show → dismiss sequence on QA-Native.
+                emit(adUnitId, AdEvent.DISMISSED, "closed by user")
                 adView.visibility = View.GONE
                 adView.removeAllViews()
                 adView.destroy()
@@ -667,14 +663,15 @@ class NativeAd(
                 cache.entries.removeAll { it.value.ad === nativeAd }
             }
 
-            setNativeAd(nativeAd)
+            // Replaces `setNativeAd(nativeAd)`; the MediaView is passed in rather than assigned.
+            registerNativeAd(nativeAd, mediaViewToRegister)
         }
 
-        nativeAd.mediaContent?.videoController?.takeIf { it.hasVideoContent() }?.apply {
-            videoLifecycleCallbacks = object : VideoController.VideoLifecycleCallbacks() {
-                override fun onVideoEnd() {
-                    super.onVideoEnd()
-                }
+        // `hasVideoContent` moved from VideoController onto MediaContent, and
+        // VideoLifecycleCallbacks is an interface now rather than an abstract class.
+        nativeAd.mediaContent?.takeIf { it.hasVideoContent }?.videoController?.apply {
+            videoLifecycleCallbacks = object : VideoController.VideoLifecycleCallbacks {
+                override fun onVideoEnd() = Unit
             }
         }
         } catch (e: Exception) {
@@ -697,47 +694,31 @@ class NativeAd(
         // This path used to emit nothing at all, so exit natives were spent without appearing
         // anywhere in the funnel - the one placement most likely to match and never render.
         emit(adUnitId, AdEvent.REQUEST_STARTED)
-        val adBuilder = AdLoader.Builder(context, adUnitId)
-        adBuilder.forNativeAd { nativeAd ->
-            exitNativeAd = nativeAd
-            onSuccessListener?.onSuccess(true, nativeAd)
+        AdsInitializer.runWhenInitialized(context) {
+            NativeAdLoader.load(nativeRequest(adUnitId), object : NativeAdLoaderCallback {
+                override fun onNativeAdLoaded(nativeAd: NativeAd) = onMain {
+                    Log.d("ExitNative", "Monetization :- onExitNativeLoaded: Admob")
+                    exitNativeAd?.takeIf { it !== nativeAd }?.destroy()
+                    exitNativeAd = nativeAd
+                    attachEventCallback(nativeAd, adUnitId, "ExitNative", "ExitNative")
+                    context.showToast("Exit native ad loaded")
+                    emit(adUnitId, AdEvent.LOAD_SUCCESS)
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "ExitNative")
+                    onSuccessListener?.onSuccess(true, nativeAd)
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) = onMain {
+                    Log.d(
+                        "ExitNative",
+                        "Monetization :- onExitNativeAdFailedToLoad() " + adError.message
+                    )
+                    context.showToast("Failed to load exit native ad")
+                    emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
+                    onSuccessListener?.onSuccess(false, null)
+                    AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "ExitNative")
+                }
+            })
         }
-
-        val videoOptions = VideoOptions.Builder().setStartMuted(false).build()
-        val adOptions = NativeAdOptions.Builder().setVideoOptions(videoOptions).build()
-        adBuilder.withNativeAdOptions(adOptions)
-
-        val adLoader = adBuilder.withAdListener(object : AdListener() {
-            override fun onAdClicked() {
-                super.onAdClicked()
-                Log.d(TAG, "onExitNativeAdClicked()")
-            }
-
-            override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                super.onAdFailedToLoad(loadAdError)
-                Log.d("ExitNative", "Monetization :- onExitNativeAdFailedToLoad() " + loadAdError.message)
-                context.showToast("Failed to load exit native ad")
-                emit(adUnitId, AdEvent.LOAD_FAILURE, loadAdError.message)
-                onSuccessListener?.onSuccess(false, null)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "ExitNative")
-            }
-
-            override fun onAdLoaded() {
-                super.onAdLoaded()
-                Log.d("ExitNative", "Monetization :- onExitNativeLoaded: Admob")
-                context.showToast("Exit native ad loaded")
-                emit(adUnitId, AdEvent.LOAD_SUCCESS)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "ExitNative")
-            }
-
-            override fun onAdImpression() {
-                super.onAdImpression()
-                emit(adUnitId, AdEvent.SHOW_STARTED)
-                AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "ExitNative")
-            }
-        }).build()
-
-        adLoader.loadAd(AdRequest.Builder().build())
     }
 
     fun showExitNativeAd(
@@ -755,23 +736,15 @@ class NativeAd(
             builder.shimmerFrameLayout?.visibility = View.GONE
             builder.let { builder ->
                 val adView = LayoutInflater.from(context).inflate(if (builder.layout == 0) R.layout.admob_small_native_media else builder.layout, null) as NativeAdView
-                populateNativeAdView(it, adView, builder)
+                populateNativeAdView(it, adView, builder, adUnitId)
                 builder.frameLayout?.removeAllViews()
                 builder.frameLayout?.addView(adView)
                 if (builder.frameLayout?.visibility == View.GONE) {
                     builder.frameLayout?.visibility = View.VISIBLE
                 }
             }
-            it.setOnPaidEventListener { adValue ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    AdsAnalytics.logAppsFlyerRevenue(
-                        adUnitId,
-                        "ExitNative",
-                        adValue,
-                        context.applicationContext
-                    )
-                }
-            }
+            // Revenue reporting is already wired on the ad object by loadExitNativeAd; Next-Gen has
+            // no separate paid-event listener to re-attach here.
         }
     }
 

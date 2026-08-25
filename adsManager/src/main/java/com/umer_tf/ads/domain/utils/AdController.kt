@@ -32,7 +32,7 @@ class AdController {
 
     /**
      * Activity classes (and subclasses) on which app-open ads must not be shown.
-     * [com.google.android.gms.ads.AdActivity] is always excluded separately.
+     * [com.google.android.libraries.ads.mobile.sdk.common.AdActivity] is always excluded separately.
      */
     @JvmField
     val openAdExcludedActivities: MutableSet<Class<out Activity>> = mutableSetOf()

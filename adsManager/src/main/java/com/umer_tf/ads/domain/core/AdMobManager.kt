@@ -3,7 +3,6 @@ package com.umer_tf.ads.domain.core
 import android.app.Activity
 import android.app.Application
 import android.util.Log
-import com.google.android.gms.ads.MobileAds
 import com.umer_tf.ads.domain.ads.app_open.AppOpenAdLoader
 import com.umer_tf.ads.domain.ads.banner.BannerAdLoader
 import com.umer_tf.ads.domain.ads.interstitial.InterstitialAdLoader
@@ -13,9 +12,6 @@ import com.umer_tf.ads.domain.annotations.AdUnitIdValidator
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.utils.AdController
 import com.umer_tf.ads.domain.utils.TimeManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 /**
  * Manages AdMob ad loaders and initialization.
@@ -48,36 +44,38 @@ open class AdMobManager(
     @JvmField
     val rewardedAdLoader = RewardedAdLoader(application, adController)
 
-    private var isInitialized = false
-
     /**
-     * Initializes the AdMob SDK.
+     * Initializes the GMA Next-Gen SDK.
      *
-     * @deprecated This method is obsolete and should not be called. AdMob SDK initialization is now
-     * handled automatically by the system or through alternative mechanisms. Use of this method is
-     * unnecessary and may lead to redundant initialization.
+     * No longer a no-op: unlike the legacy SDK, the Next-Gen SDK does not self-initialize from the
+     * manifest, and any load call made before initialization completes is dropped. Calling this
+     * from `Application.onCreate` is the recommended way to get the work done before the first
+     * placement; loaders defer their own requests behind it as a safety net either way.
      *
-     * @param onInitializationComplete Callback to be invoked when initialization is complete.
-     * This callback is no longer required as the method is obsolete.
+     * The AdMob application id is read from the host manifest's
+     * `com.google.android.gms.ads.APPLICATION_ID` meta-data tag - the same tag the legacy SDK used
+     * and the one the UMP SDK still requires - so no host manifest change is needed. Use
+     * [setApplicationId] to supply it at runtime instead.
+     *
+     * @param onInitializationComplete Invoked on the main thread once initialization settles.
      */
-    @Deprecated("This method is obsolete. AdMob SDK initialization is handled automatically.")
     fun initialize(onInitializationComplete: () -> Unit) {
         TimeManager.getInstance().start()
-        if (!isInitialized) {
-            CoroutineScope(Dispatchers.IO).launch {
-                MobileAds.initialize(application) { initializationStatus ->
-                    // Log or handle initialization status if needed
-                    Log.d(TAG, "Monetization:- AdMob intialized: $initializationStatus")
-                    isInitialized = true
-                    CoroutineScope(Dispatchers.Main).launch {
-                        onInitializationComplete()
-                    }
-                }
-            }
-        }
-        else{
+        AdsInitializer.initialize(application) {
+            Log.d(TAG, "Monetization :- AdMob initialization complete")
             onInitializationComplete()
         }
+    }
+
+    /**
+     * Overrides the AdMob application id used for SDK initialization.
+     * Has no effect once initialization has started.
+     *
+     * @return The current instance of AdMobManager.
+     */
+    fun setApplicationId(applicationId: String): AdMobManager {
+        AdsInitializer.setApplicationId(applicationId)
+        return this
     }
 
     /**
@@ -185,7 +183,7 @@ open class AdMobManager(
 
     /**
      * Replaces the list of activities where app-open ads must not be shown.
-     * Subclasses of each listed class are also excluded. AdMob's own [com.google.android.gms.ads.AdActivity]
+     * Subclasses of each listed class are also excluded. AdMob's own [com.google.android.libraries.ads.mobile.sdk.common.AdActivity]
      * is always excluded regardless of this list.
      *
      * @param activities Activity classes to exclude.

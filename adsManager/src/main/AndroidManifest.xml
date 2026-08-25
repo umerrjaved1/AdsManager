@@ -11,7 +11,7 @@
         android:allowBackup="true"
         android:supportsRtl="true">
 
-        <activity android:name="com.google.android.gms.ads.AdActivity"
+        <activity android:name="com.google.android.libraries.ads.mobile.sdk.common.AdActivity"
             android:theme="@style/AdmobTheme"
             android:exported="false"
             tools:targetApi="33"

@@ -26,6 +26,23 @@ enum class AdFormat {
             BANNER -> "banner"
             REWARDED -> "reward"
         }
+
+    /**
+     * Logcat tag for this format's QA stream — `QA-Inter`, `QA-Native`, and so on.
+     *
+     * A tag *per format* rather than one shared tag is the whole point: it is what lets a tester
+     * watch one format's lifecycle in isolation (`adb logcat -s QA-Inter:D`) instead of filtering
+     * a mixed stream by eye.
+     */
+    val qaTag: String
+        get() = when (this) {
+            INTERSTITIAL -> "QA-Inter"
+            APP_OPEN_START -> "QA-Open-Start"
+            APP_OPEN_RESUME -> "QA-Open-Resume"
+            NATIVE -> "QA-Native"
+            BANNER -> "QA-Banner"
+            REWARDED -> "QA-Reward"
+        }
 }
 
 /**
@@ -181,6 +198,27 @@ object AdEventLog {
     var simpleLogTag: String = "mona"
 
     /**
+     * Third stream: one line per lifecycle stage, under a per-format tag ([AdFormat.qaTag]).
+     *
+     * The other two streams are one tag each, so watching a single format means filtering a mixed
+     * feed. This one splits by format instead - `adb logcat -s QA-Inter:D` or `-s QA-Native:D` -
+     * and prints only the four stages a QA pass is actually checking:
+     *
+     * ```
+     * QA-Inter:  REQUEST    home-inter        ca-app-pub-…/1234567890
+     * QA-Inter:  LOAD       home-inter        ca-app-pub-…/1234567890   1.8s
+     * QA-Inter:  SHOW       home-inter        ca-app-pub-…/1234567890
+     * QA-Inter:  DISMISS    home-inter        ca-app-pub-…/1234567890
+     * QA-Native: LOAD-FAIL  language-native   ca-app-pub-…/0987654321   No ad config.
+     * ```
+     *
+     * Watch several at once with `adb logcat -s QA-Inter:D QA-Native:D`.
+     */
+    @JvmStatic
+    @Volatile
+    var qaLogging: Boolean = true
+
+    /**
      * Units that have already logged `loaded` for the request currently in flight.
      *
      * Interstitials and app-open ads emit LOAD_SUCCESS *and* READY for a single fill, which would
@@ -188,6 +226,14 @@ object AdEventLog {
      * fills arrived.
      */
     private val loadedLogged = ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * The same one-`LOAD`-per-fill guard for the QA stream.
+     *
+     * It cannot share [loadedLogged]: that map is claimed with `putIfAbsent`, so whichever stream
+     * saw the fill first would silently swallow the line for the other.
+     */
+    private val qaLoadedLogged = ConcurrentHashMap<String, Boolean>()
 
     /**
      * Registers human names for ad units.
@@ -242,6 +288,11 @@ object AdEventLog {
         }
         if (simpleLogging) {
             logSimple(format, adUnitId, event, reason)
+        }
+        // Before trackTiming: that call clears the request start time, and the QA line reports
+        // how long the fill took.
+        if (qaLogging) {
+            logQa(format, adUnitId, event, reason)
         }
         trackTiming(format, adUnitId, event)
         if (listeners.isEmpty()) return
@@ -324,6 +375,67 @@ object AdEventLog {
             }
         }
         Log.d(simpleLogTag, line)
+    }
+
+    /**
+     * The four-stage stream, one tag per format.
+     *
+     * Only the stages a QA pass walks through are printed - **request, load, show, dismiss** - plus
+     * the failure of each, because "no line appeared" and "the line said it failed" are the two
+     * outcomes a tester needs to tell apart. Expiry, eviction and preload bookkeeping stay in the
+     * detailed stream; they are lifecycle noise for someone watching a single placement.
+     *
+     * Formats reach this only where the loader emits: interstitial, native and app-open drive the
+     * full four stages today. Banner and rewarded do not call [emit] at all, so their tags stay
+     * silent rather than printing a partial lifecycle that would read as a bug.
+     */
+    private fun logQa(
+        format: AdFormat,
+        adUnitId: String,
+        event: AdEvent,
+        reason: String?,
+    ) {
+        val key = timingKey(format, adUnitId)
+        if (event == AdEvent.REQUEST_STARTED) qaLoadedLogged.remove(key)
+
+        val stage = when (event) {
+            AdEvent.REQUEST_STARTED,
+            AdEvent.REQUEST_JOINED,
+            AdEvent.REQUEST_SKIPPED_CACHED -> "REQUEST"
+            AdEvent.LOAD_SUCCESS, AdEvent.READY -> {
+                // Interstitial and app-open emit LOAD_SUCCESS *and* READY for one fill; without
+                // this the QA stream would report two loads for a single ad.
+                if (qaLoadedLogged.putIfAbsent(key, true) != null) return
+                "LOAD"
+            }
+            AdEvent.LOAD_FAILURE -> "LOAD-FAIL"
+            AdEvent.SHOW_STARTED -> "SHOW"
+            AdEvent.SHOW_REJECTED_NOT_READY,
+            AdEvent.SHOW_REJECTED_INVALID_ACTIVITY,
+            AdEvent.SHOW_REJECTED_ALREADY_SHOWING,
+            AdEvent.SHOW_SKIPPED_BY_RULE,
+            AdEvent.SHOW_FAILED -> "SHOW-FAIL"
+            AdEvent.DISMISSED -> "DISMISS"
+            else -> return
+        }
+
+        val note = when (stage) {
+            "LOAD" -> loadDuration(format, adUnitId, event)
+            "REQUEST" -> event.why
+            "LOAD-FAIL", "SHOW-FAIL" -> reason ?: event.why
+            else -> null
+        }
+        val line = buildString {
+            append(stage.padEnd(10))
+            append(placementLabel(adUnitId).padEnd(18).take(18))
+            // Full unit id, so a line can be matched against the AdMob console without a lookup.
+            append(adUnitId.ifBlank { "(no unit)" })
+            note?.takeIf { it.isNotBlank() }?.let {
+                append("   ")
+                append(it)
+            }
+        }
+        Log.d(format.qaTag, line)
     }
 
     /** `inter   splash          loaded     · 10.2s` */
@@ -443,5 +555,6 @@ object AdEventLog {
         counts.clear()
         requestStartedAt.clear()
         loadedLogged.clear()
+        qaLoadedLogged.clear()
     }
 }

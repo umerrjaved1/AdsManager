@@ -22,8 +22,13 @@
 
 -keep class com.appsflyer.** { *; }
 -keep class kotlin.jvm.internal.** { *; }
--keep public class com.google.android.gms.ads.** {public *;}
--keep public class com.google.ads.** {public *;}
--keep public class com.google.android.gms.internal.ads.** {public *;}
 -dontwarn com.facebook.infer.annotation.Nullsafe$Mode
 -dontwarn com.facebook.infer.annotation.Nullsafe
+
+# No keep rules for the ads SDK itself. The GMA Next-Gen AAR ships its own consumer rules in
+# proguard.txt, which R8 applies to the host app automatically; the legacy
+# `-keep public class com.google.android.gms.ads.**` rules that used to live here referenced
+# packages this library no longer depends on.
+#
+# Note this whole file is inert while `isMinifyEnabled = false` for the release build type -
+# rules that must reach consumers belong in consumer-rules.pro.

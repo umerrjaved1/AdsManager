@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AdmobTheme">
-    </style>
+    <!--
+      Android 15+ variant. Same rule as the base style: it must keep the SDK's own ad theme as its
+      parent, or AdActivity loses its translucency and its no-title window. Add API 35 specific
+      overrides here as items, never by dropping the parent.
+    -->
+    <style name="AdmobTheme" parent="@style/Theme.GoogleMobileAds" />
 </resources>

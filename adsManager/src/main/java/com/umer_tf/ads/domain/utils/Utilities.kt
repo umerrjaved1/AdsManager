@@ -8,7 +8,7 @@ import android.os.Build
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowMetrics
-import com.google.android.gms.ads.AdSize
+import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
 import com.umer_tf.ads.domain.core.AdMobManager
 
 object Utilities {

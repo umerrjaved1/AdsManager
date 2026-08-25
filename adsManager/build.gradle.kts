@@ -41,6 +41,14 @@ android {
     }
 }
 
+// The GMA Next-Gen SDK repackages the mediation-facing `com.google.android.gms.ads.*` types into
+// its own artifact. Any transitive `play-services-ads` / `-lite` would land those same classes on
+// the classpath a second time and fail the build with duplicate symbols.
+configurations.all {
+    exclude(group = "com.google.android.gms", module = "play-services-ads")
+    exclude(group = "com.google.android.gms", module = "play-services-ads-lite")
+}
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
@@ -57,8 +65,12 @@ dependencies {
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlatics)
 
-    // AdMob SDK
-    api(libs.play.services.ads)
+    // GMA Next-Gen SDK
+    api(libs.ads.mobile.sdk)
+
+    // UMP arrives transitively with the SDK, but AdsConsentManager exposes its types (FormError)
+    // in its public API, so it is declared explicitly and as `api`.
+    api(libs.user.messaging.platform)
 
     //Shimmer
     implementation (libs.shimmer)
@@ -76,7 +88,7 @@ afterEvaluate {
                 from(components.getByName("release"))
                 groupId = "com.umer_tf.ads"
                 artifactId = "ads"
-                version = "1.0.18"
+                version = "1.2.0"
             }
         }
         repositories {

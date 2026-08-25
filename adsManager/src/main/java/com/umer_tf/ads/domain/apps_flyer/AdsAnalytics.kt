@@ -2,7 +2,7 @@ package com.umer_tf.ads.domain.apps_flyer
 
 import android.content.Context
 import android.os.Bundle
-import com.google.android.gms.ads.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.umer_tf.ads.domain.annotations.ValidateAdUnitId
 import com.umer_tf.ads.domain.utils.AnalyticsManager
