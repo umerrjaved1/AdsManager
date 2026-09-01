@@ -314,7 +314,7 @@ class NativeAd(
     private fun nativeRequest(adUnitId: String): NativeAdRequest =
         NativeAdRequest.Builder(adUnitId, listOf(NativeAd.NativeAdType.NATIVE))
             // `NativeAdOptions` is gone; video options are declared on the request itself.
-            .setVideoOptions(VideoOptions.Builder().setStartMuted(false).build())
+            .setVideoOptions(VideoOptions.Builder().setStartMuted(startMuted = true).build())
             .build()
 
     /**
