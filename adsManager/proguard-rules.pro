@@ -1,33 +1,15 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Applied only if this module's release build has minify enabled.
+# Release minify is off: a library AAR is shrunk by the host app, and the rules
+# that host needs live in consumer-rules.pro. These rules exist so turning minify
+# on here does not strip the public API out of the published AAR.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+-keepattributes SourceFile,LineNumberTable,Signature,*Annotation*,InnerClasses,EnclosingMethod
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keep public class com.umer_tf.ads.domain.** {
+    public protected *;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+-keep class com.umer_tf.ads.domain.ads.native_ad.FullScreenNativeAdActivity { *; }
 
--keep class com.appsflyer.** { *; }
--keep class kotlin.jvm.internal.** { *; }
-# Google Mobile Ads SDK (Next-Gen).
--keep public class com.google.android.libraries.ads.mobile.sdk.** {public *;}
-# The Next-Gen SDK still ships a handful of classes under the legacy package - the MediaView that
-# nativead.MediaView extends, and MediationExtrasReceiver referenced by putAdSourceExtrasBundle - so
-# these keeps stay even though play-services-ads itself is gone.
--keep public class com.google.android.gms.ads.** {public *;}
--keep public class com.google.ads.** {public *;}
--dontwarn com.facebook.infer.annotation.Nullsafe$Mode
--dontwarn com.facebook.infer.annotation.Nullsafe
+-dontwarn com.facebook.infer.annotation.**

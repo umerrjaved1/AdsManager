@@ -3,7 +3,7 @@ package com.umer_tf.ads.domain.consent
 import android.app.Activity
 import android.content.Context
 import android.provider.Settings
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import com.google.android.ump.ConsentDebugSettings
 import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
@@ -45,7 +45,6 @@ class AdsConsentManager(val context: Context) {
                 reset()
                 val android_id = Settings.Secure.getString(activity?.contentResolver, Settings.Secure.ANDROID_ID)
                 val deviceId = md5(android_id).uppercase(Locale.getDefault())
-                Log.i("Skype=", deviceId)
                 // For testing purposes, you can force a DebugGeography of EEA or NOT_EEA.
                 val debugSettings = ConsentDebugSettings.Builder(activity)
                     .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
@@ -57,12 +56,12 @@ class AdsConsentManager(val context: Context) {
         }
 
         consentInformation.requestConsentInfoUpdate(activity, params, {
-            Log.d(TAG, "Consent info updated successfully.")
+            AdsLog.d(TAG, "Consent info updated successfully.")
             // Every path that touches UMP publishes to the gate, because ad requests happen from
             // places that have no Activity and so cannot consult ConsentInformation themselves.
             AdsConsentGate.update(canRequestAds)
         }, { error ->
-            Log.e(TAG, "Error updating consent info: ${error.errorCode} - ${error.message}")
+            AdsLog.e(TAG, "Error updating consent info: ${error.errorCode} - ${error.message}")
             AdsConsentGate.update(canRequestAds)
         })
     }
@@ -80,10 +79,10 @@ class AdsConsentManager(val context: Context) {
             { formError ->
                 AdsConsentGate.update(canRequestAds)
                 if (formError != null) {
-                    Log.e(TAG, "Error loading consent form: ${formError.errorCode} - ${formError.message}")
+                    AdsLog.e(TAG, "Error loading consent form: ${formError.errorCode} - ${formError.message}")
                     onConsentFormLoaded(false)
                 } else {
-                    Log.d(TAG, "Consent form loaded and shown successfully.")
+                    AdsLog.d(TAG, "Consent form loaded and shown successfully.")
                     onConsentFormLoaded(true)
                 }
             }
@@ -129,7 +128,7 @@ class AdsConsentManager(val context: Context) {
                 activity
             ) { loadAndShowError ->
                 // Consent gathering failed.
-                Log.e(
+                AdsLog.e(
                     TAG, String.format(
                         "%s: %s", loadAndShowError?.errorCode, loadAndShowError?.message
                     )
@@ -139,7 +138,7 @@ class AdsConsentManager(val context: Context) {
             }
         }, { requestConsentError ->
             // Consent gathering failed.
-            Log.w(
+            AdsLog.w(
                 TAG, String.format(
                     "%s: %s", requestConsentError.errorCode, requestConsentError.message
                 )

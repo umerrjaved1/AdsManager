@@ -1,7 +1,7 @@
 package com.umer_tf.ads.domain.core
 
 import android.os.SystemClock
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 
 /**
  * Process-wide interlock: exactly one full-screen ad may own the screen at a time.
@@ -32,7 +32,7 @@ object FullScreenGate {
     fun isShowing(): Boolean {
         val current = owner ?: return false
         if (SystemClock.elapsedRealtime() - startedAtElapsed > MAX_SHOWING_MS) {
-            Log.w(TAG, "Monetization :- stale gate held by $current - releasing")
+            AdsLog.w(TAG, "Monetization :- stale gate held by $current - releasing")
             release(current)
             return false
         }
@@ -51,7 +51,7 @@ object FullScreenGate {
     @Synchronized
     fun acquire(placement: String): Boolean {
         if (isShowing()) {
-            Log.d(TAG, "Monetization :- $placement refused - $owner is showing")
+            AdsLog.d(TAG, "Monetization :- $placement refused - $owner is showing")
             return false
         }
         owner = placement
@@ -64,7 +64,7 @@ object FullScreenGate {
     @Synchronized
     fun release(placement: String) {
         if (owner != null && owner != placement) {
-            Log.w(TAG, "Monetization :- $placement tried to release a gate held by $owner")
+            AdsLog.w(TAG, "Monetization :- $placement tried to release a gate held by $owner")
             return
         }
         owner = null

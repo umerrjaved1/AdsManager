@@ -4,7 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.os.SystemClock
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAd
 import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
@@ -87,7 +87,7 @@ internal abstract class AppOpenSlotManager(
         if (unitId.isBlank()) {
             // Configuring the slot is the host's job; requesting against "" can only fail and
             // would look like a no-fill in the reports.
-            Log.w(tag, "Monetization :- $gateOwner load skipped - no ad unit configured")
+            AdsLog.w(tag, "Monetization :- $gateOwner load skipped - no ad unit configured")
             emit(AdEvent.LOAD_FAILURE, "ad unit id not configured")
             onSuccessListener?.onSuccess(false)
             return
@@ -109,7 +109,7 @@ internal abstract class AppOpenSlotManager(
                     appOpenAd = ad
                     state = AdSlotState.READY
                     loadTimeElapsed = SystemClock.elapsedRealtime()
-                    Log.d(tag, "Monetization :- $gateOwner - onAdLoaded.")
+                    AdsLog.d(tag, "Monetization :- $gateOwner - onAdLoaded.")
                     emit(AdEvent.LOAD_SUCCESS)
                     emit(AdEvent.READY)
                     settle(true)
@@ -117,7 +117,7 @@ internal abstract class AppOpenSlotManager(
 
                 override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
                     state = AdSlotState.FAILED
-                    Log.d(tag, "Monetization :- $gateOwner - onAdFailedToLoad: ${adError.message}")
+                    AdsLog.d(tag, "Monetization :- $gateOwner - onAdFailedToLoad: ${adError.message}")
                     emit(AdEvent.LOAD_FAILURE, adError.message)
                     settle(false)
                 }
@@ -181,7 +181,7 @@ internal abstract class AppOpenSlotManager(
                 state = AdSlotState.SHOWING
                 emit(AdEvent.SHOW_STARTED)
                 AnalyticsManager.getInstance(application).sendAnalytics(AD_SHOWN, analyticsLabel)
-                Log.d(tag, "Monetization :- $gateOwner - onAdShowedFullScreenContent.")
+                AdsLog.d(tag, "Monetization :- $gateOwner - onAdShowedFullScreenContent.")
             }
 
             override fun onAdDismissedFullScreenContent() = onMainThread {
@@ -202,7 +202,7 @@ internal abstract class AppOpenSlotManager(
                 state = AdSlotState.IDLE
                 onStateChange(false)
                 emit(AdEvent.SHOW_FAILED, fullScreenContentError.message)
-                Log.d(
+                AdsLog.d(
                     tag,
                     "Monetization :- $gateOwner - onAdFailedToShow: ${fullScreenContentError.message}"
                 )
@@ -215,7 +215,7 @@ internal abstract class AppOpenSlotManager(
                 CoroutineScope(Dispatchers.IO).launch {
                     runCatching {
                         AdsAnalytics.logAppsFlyerRevenue(unitId, analyticsLabel, value, application)
-                    }.onFailure { Log.e(tag, "Failed to log $gateOwner revenue", it) }
+                    }.onFailure { AdsLog.e(tag, "Failed to log $gateOwner revenue", it) }
                 }
             }
         }
@@ -225,7 +225,7 @@ internal abstract class AppOpenSlotManager(
             ad.show(activity)
         } catch (t: Throwable) {
             // No callback will fire, so nothing else releases the gate or the showing flag.
-            Log.e(tag, "Monetization :- $gateOwner show() threw", t)
+            AdsLog.e(tag, "Monetization :- $gateOwner show() threw", t)
             releaseGate()
             appOpenAd = null
             loadTimeElapsed = 0L
@@ -240,7 +240,7 @@ internal abstract class AppOpenSlotManager(
     fun isAdAvailable(): Boolean {
         if (appOpenAd == null) return false
         if (isAdExpired()) {
-            Log.d(tag, "Monetization :- $gateOwner - cached ad expired")
+            AdsLog.d(tag, "Monetization :- $gateOwner - cached ad expired")
             emit(AdEvent.AD_EXPIRED)
             appOpenAd = null
             loadTimeElapsed = 0L

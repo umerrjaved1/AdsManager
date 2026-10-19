@@ -2,7 +2,7 @@ package com.umer_tf.ads.domain.ads.banner
 
 import android.app.Activity
 import android.os.Bundle
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -70,7 +70,7 @@ class BannerAdLoader: IBannerAdLoader {
      */
     private fun attachAdView(activity: Activity, frameLayout: FrameLayout, adView: AdView) {
         adViewsByFrame.put(frameLayout, adView)?.takeIf { it !== adView }?.let { previous ->
-            Log.d(TAG, "Monetization :- destroying the banner this frame held before")
+            AdsLog.d(TAG, "Monetization :- destroying the banner this frame held before")
             previous.visibility = View.GONE
             previous.destroy()
         }
@@ -132,7 +132,7 @@ class BannerAdLoader: IBannerAdLoader {
             // thread and touch the shimmer and the ad container.
             adView.loadAd(adRequest, object : AdLoadCallback<BannerAd> {
                 override fun onAdLoaded(ad: BannerAd) = onMainThread {
-                    Log.d(TAG, "Monetization :- onBannerAdLoaded:")
+                    AdsLog.d(TAG, "Monetization :- onBannerAdLoaded:")
 
                     shimmerFrameLayout?.stopShimmer()
                     shimmerFrameLayout?.visibility = View.GONE
@@ -159,7 +159,7 @@ class BannerAdLoader: IBannerAdLoader {
                 }
 
                 override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                    Log.d(TAG, "Monetization :- onBannerAdFailed: ${adError.message}")
+                    AdsLog.d(TAG, "Monetization :- onBannerAdFailed: ${adError.message}")
                     if (frameLayout.visibility == View.VISIBLE) {
                         frameLayout.visibility = View.GONE
                     }
@@ -169,7 +169,7 @@ class BannerAdLoader: IBannerAdLoader {
                 }
             })
         } catch (e: Exception) {
-            Log.d(TAG, "Monetization :- loadBanner: ${e.message}")
+            AdsLog.d(TAG, "Monetization :- loadBanner: ${e.message}")
         }
     }
 
@@ -205,7 +205,7 @@ class BannerAdLoader: IBannerAdLoader {
                     shimmerFrameLayout?.stopShimmer()
                     shimmerFrameLayout?.visibility = View.GONE
                     frameLayout.visibility = View.VISIBLE
-                    Log.d(TAG, "Monetization :- onMediumRectangleAdLoaded")
+                    AdsLog.d(TAG, "Monetization :- onMediumRectangleAdLoaded")
                     AnalyticsManager.getInstance(activity).sendAnalytics(AD_LOADED, "banner_memrec_ad")
 
                     ad.adEventCallback = object : BannerAdEventCallback {
@@ -231,7 +231,7 @@ class BannerAdLoader: IBannerAdLoader {
                     frameLayout.visibility = View.GONE
                     shimmerFrameLayout?.stopShimmer()
                     shimmerFrameLayout?.visibility = View.GONE
-                    Log.d(TAG, "Monetization :- onMediumRectangleAdFailed: ${adError.message}")
+                    AdsLog.d(TAG, "Monetization :- onMediumRectangleAdFailed: ${adError.message}")
                     AnalyticsManager.getInstance(activity).sendAnalytics(AD_FAILED, "banner_memrec_ad")
                 }
             })
@@ -239,7 +239,7 @@ class BannerAdLoader: IBannerAdLoader {
             shimmerFrameLayout?.stopShimmer()
             shimmerFrameLayout?.visibility = View.GONE
             frameLayout.visibility = View.GONE
-            Log.d(TAG, "loadMediumRectangle: ${e.message}")
+            AdsLog.d(TAG, "loadMediumRectangle: ${e.message}")
         }
     }
 
@@ -281,7 +281,7 @@ class BannerAdLoader: IBannerAdLoader {
 
             adView.loadAd(adRequest, object : AdLoadCallback<BannerAd> {
                 override fun onAdLoaded(ad: BannerAd) = onMainThread {
-                    Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdLoaded")
+                    AdsLog.d(TAG, "Monetization :- Collapsible Banner Ad - onAdLoaded")
 
                     shimmerFrameLayout?.stopShimmer()
                     shimmerFrameLayout?.visibility = View.GONE
@@ -308,7 +308,7 @@ class BannerAdLoader: IBannerAdLoader {
                 }
 
                 override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                    Log.d(TAG, "Monetization :- Collapsible Banner Ad - onAdFailedToLoad: ${adError.message}")
+                    AdsLog.d(TAG, "Monetization :- Collapsible Banner Ad - onAdFailedToLoad: ${adError.message}")
 
                     shimmerFrameLayout?.stopShimmer()
                     shimmerFrameLayout?.visibility = View.GONE
@@ -321,7 +321,7 @@ class BannerAdLoader: IBannerAdLoader {
             shimmerFrameLayout?.stopShimmer()
             shimmerFrameLayout?.visibility = View.GONE
             frameLayout.visibility = View.GONE
-            Log.d(TAG, "loadMediumRectangle: ${e.message}")
+            AdsLog.d(TAG, "loadMediumRectangle: ${e.message}")
         }
     }
     
@@ -461,7 +461,7 @@ class BannerAdLoader: IBannerAdLoader {
         reason: String,
         onOutcome: ((Boolean, AdLoadFailure?) -> Unit)?
     ) {
-        Log.d(TAG, "Monetization :- showBanner refused: $reason")
+        AdsLog.d(TAG, "Monetization :- showBanner refused: $reason")
         hideShimmer(shimmer ?: shimmerHost as? ShimmerFrameLayout)
         // A separate shimmer wrapper keeps its height and margins when merely emptied, leaving a gap
         // where the ad would have been.

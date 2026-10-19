@@ -43,7 +43,8 @@ object AdsLog {
     }
 
     @JvmStatic
-    fun w(tag: String, message: String) {
-        Log.w(tag, message)
+    @JvmOverloads
+    fun w(tag: String, message: String, throwable: Throwable? = null) {
+        if (throwable != null) Log.w(tag, message, throwable) else Log.w(tag, message)
     }
 }

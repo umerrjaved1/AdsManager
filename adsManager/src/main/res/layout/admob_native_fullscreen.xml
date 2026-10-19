@@ -50,7 +50,7 @@
             android:paddingVertical="2dp"
             android:text="Ad"
             android:textColor="@color/ad_text_primary"
-            android:textSize="@dimen/_9ssp"
+            android:textSize="@dimen/ad_text_badge"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -92,7 +92,7 @@
                     android:maxLines="1"
                     android:paddingVertical="@dimen/_5sdp"
                     android:textColor="@color/ad_text_primary"
-                    android:textSize="@dimen/_12sdp"
+                    android:textSize="@dimen/ad_text_headline"
                     android:textStyle="bold"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
@@ -106,7 +106,7 @@
                     android:ellipsize="end"
                     android:maxLines="5"
                     android:textColor="@color/ad_text_primary"
-                    android:textSize="@dimen/_10sdp"
+                    android:textSize="@dimen/ad_text_body"
                     android:visibility="visible"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
@@ -125,7 +125,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
                     android:textColor="@color/ad_text_primary"
-                    android:textSize="@dimen/_9sdp"
+                    android:textSize="@dimen/ad_text_meta"
                     android:textStyle="bold" />
 
                 <TextView
@@ -137,7 +137,7 @@
                     android:paddingEnd="5dp"
                     android:paddingRight="5dp"
                     android:textColor="@color/ad_text_primary"
-                    android:textSize="@dimen/_9sdp" />
+                    android:textSize="@dimen/ad_text_meta" />
 
                 <TextView
                     android:id="@+id/ad_store"
@@ -148,7 +148,7 @@
                     android:paddingEnd="5dp"
                     android:paddingRight="5dp"
                     android:textColor="@color/ad_text_primary"
-                    android:textSize="@dimen/_9sdp" />
+                    android:textSize="@dimen/ad_text_meta" />
 
                 <RatingBar
                     android:id="@+id/ad_stars"
@@ -175,7 +175,7 @@
             android:gravity="center"
             android:textAllCaps="false"
             android:textColor="@color/ad_cta_text"
-            android:textSize="@dimen/_16ssp"
+            android:textSize="@dimen/ad_text_cta"
             app:layout_constraintBottom_toBottomOf="parent"
             tools:text="Install" />
     </androidx.constraintlayout.widget.ConstraintLayout>

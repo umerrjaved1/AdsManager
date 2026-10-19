@@ -30,7 +30,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.umer_tf.ads:ads:2.0.0")
+    implementation("com.umer_tf.ads:ads:3.0.3")
     implementation("com.facebook.shimmer:shimmer:0.5.0")
 }
 ```

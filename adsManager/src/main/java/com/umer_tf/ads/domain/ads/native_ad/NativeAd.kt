@@ -5,7 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.ImageView
@@ -112,7 +112,7 @@ class NativeAd(
     private fun cachedAdFor(adUnitId: String): NativeAd? {
         val entry = cache[adUnitId] ?: return null
         if (SystemClock.elapsedRealtime() - entry.loadedAtElapsed > NATIVE_EXPIRY_MS) {
-            Log.d(TAG, "Monetization :- cached native for $adUnitId expired")
+            AdsLog.d(TAG, "Monetization :- cached native for $adUnitId expired")
             emit(adUnitId, AdEvent.AD_EXPIRED)
             cache.remove(adUnitId)
             entry.ad.destroy()
@@ -137,7 +137,7 @@ class NativeAd(
         cache[adUnitId] = CachedNative(ad, SystemClock.elapsedRealtime())
         while (cache.size > MAX_CACHED_UNITS) {
             val oldest = cache.keys.first()
-            Log.d(TAG, "Monetization :- evicting cached native for $oldest (cache full)")
+            AdsLog.d(TAG, "Monetization :- evicting cached native for $oldest (cache full)")
             emit(oldest, AdEvent.AD_DESTROYED, "evicted, cache limit $MAX_CACHED_UNITS")
             cache.remove(oldest)?.ad?.destroy()
         }
@@ -199,7 +199,7 @@ class NativeAd(
         // onNativeAdLoaded caches the object before onAdLoadingCompleted clears inFlight, so
         // checking join first parked on a fill that was already READY and then skipped it.
         consumeCachedAd(adUnitId)?.let { cached ->
-            Log.d(TAG, "Monetization :- loadAndShow using preloaded ad for $adUnitId")
+            AdsLog.d(TAG, "Monetization :- loadAndShow using preloaded ad for $adUnitId")
             emit(adUnitId, AdEvent.REQUEST_SKIPPED_CACHED)
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
@@ -244,7 +244,7 @@ class NativeAd(
         activity: Activity,
         onSuccessListener: OnSuccessListener<Boolean>?
     ) {
-        Log.d(TAG, "Monetization :- loadAndShow joining in-flight request for $adUnitId")
+        AdsLog.d(TAG, "Monetization :- loadAndShow joining in-flight request for $adUnitId")
         emit(adUnitId, AdEvent.REQUEST_JOINED)
         builder.frameLayout?.visibility = View.GONE
         builder.shimmerFrameLayout?.startShimmer()
@@ -305,7 +305,7 @@ class NativeAd(
             }
 
             override fun onAdClicked() = onMainThread {
-                Log.d(TAG, "Monetization :- onAdClicked() $analyticsLabel")
+                AdsLog.d(TAG, "Monetization :- onAdClicked() $analyticsLabel")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_CLICKED, analyticsLabel)
             }
 
@@ -364,7 +364,7 @@ class NativeAd(
                 // Language (and other short-lived screens) can finish in 1–3s. Binding into a
                 // dying view produces a match with no impression; keep the fill for the next screen.
                 if (activity.isFinishing || activity.isDestroyed) {
-                    Log.d(TAG, "Monetization :- loadAndShow fill after Activity died — caching $adUnitId")
+                    AdsLog.d(TAG, "Monetization :- loadAndShow fill after Activity died — caching $adUnitId")
                     putInCache(adUnitId, nativeAd)
                     cachedBecauseActivityDied = true
                 } else {
@@ -373,7 +373,7 @@ class NativeAd(
             }
 
             override fun onAdLoadingCompleted() = onMainThread {
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob ${activity.javaClass.simpleName}")
+                AdsLog.d("AdmobNative", "Monetization :- onAdLoaded (loadAndShow): Admob ${activity.javaClass.simpleName}")
                 inFlight.remove(adUnitId)
                 emit(adUnitId, AdEvent.LOAD_SUCCESS)
                 builder.shimmerFrameLayout?.stopShimmer()
@@ -392,7 +392,7 @@ class NativeAd(
             }
 
             override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + adError.message)
+                AdsLog.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + adError.message)
                 inFlight.remove(adUnitId)
                 emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
                 // No-fill must clear the placeholder: leaving it running is what made empty
@@ -458,7 +458,7 @@ class NativeAd(
             }
 
             override fun onAdLoadingCompleted() = onMainThread {
-                Log.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob ${activity.javaClass.simpleName}")
+                AdsLog.d("AdmobNative", "Monetization :- onAdLoaded (loadAd): Admob ${activity.javaClass.simpleName}")
                 inFlight.remove(adUnitId)
                 // LOAD_SUCCESS is what the funnel counts as a fill. Emitting only READY here
                 // meant preloaded natives were invisible to it, so `filled` had to be derived
@@ -472,7 +472,7 @@ class NativeAd(
             }
 
             override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                Log.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + adError.message)
+                AdsLog.d("AdmobNative", "Monetization :- onAdFailedToLoad() " + adError.message)
                 inFlight.remove(adUnitId)
                 emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
                 context.showToast("Failed to load native ad")
@@ -499,7 +499,7 @@ class NativeAd(
         // re-render this same object - no request, no impression, wrong unit in the report.
         val ad = consumeCachedAd(adUnitId)
         if (ad == null) {
-            Log.d("AdmobNative", "Monetization :- showLoadedAd: no preloaded ad for $adUnitId")
+            AdsLog.d("AdmobNative", "Monetization :- showLoadedAd: no preloaded ad for $adUnitId")
             emit(adUnitId, AdEvent.SHOW_REJECTED_NOT_READY)
             builder.shimmerFrameLayout?.stopShimmer()
             builder.shimmerFrameLayout?.visibility = View.GONE
@@ -507,7 +507,7 @@ class NativeAd(
         }
         builder.shimmerFrameLayout?.stopShimmer()
         builder.shimmerFrameLayout?.visibility = View.GONE
-        Log.d("AdmobNative", "Monetization :- (show loaded) ${activity.javaClass.simpleName}")
+        AdsLog.d("AdmobNative", "Monetization :- (show loaded) ${activity.javaClass.simpleName}")
         emit(adUnitId, AdEvent.SHOW_REQUESTED, activity.javaClass.simpleName)
         bindToFrame(ad, builder)
         // Already reporting - the event callback was attached when the ad loaded.
@@ -557,7 +557,7 @@ class NativeAd(
         // id to be fatal. Here it comes back through onResult so the caller can settle its state.
         if (!AdUnitIdValidator.validateAdUnitId(adUnitId)) {
             val reason = "Malformed ad unit id \"$adUnitId\""
-            Log.e(TAG, "Monetization :- loadDetached refused: $reason")
+            AdsLog.e(TAG, "Monetization :- loadDetached refused: $reason")
             onResult(null, AdLoadFailure(AdLoadFailure.CODE_LIBRARY, reason))
             return
         }
@@ -602,7 +602,7 @@ class NativeAd(
             }
 
             override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                Log.d(TAG, "Monetization :- loadDetached onAdFailedToLoad: ${adError.message}")
+                AdsLog.d(TAG, "Monetization :- loadDetached onAdFailedToLoad: ${adError.message}")
                 emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "NativeAd")
                 onResult(null, AdLoadFailure(adError.code.value, adError.message))
@@ -789,7 +789,7 @@ class NativeAd(
             }
 
             adView.findViewById<ImageView>(R.id.ad_close)?.setOnClickListener {
-                Log.d(TAG, "Ad Close Clicked")
+                AdsLog.d(TAG, "Ad Close Clicked")
                 adView.visibility = View.GONE
                 adView.removeAllViews()
                 adView.destroy()
@@ -819,7 +819,7 @@ class NativeAd(
                 }
             }
         } catch (e: Exception) {
-            Log.e("Populate Error", "populateNativeAdView: ${e.message}")
+            AdsLog.e("Populate Error", "populateNativeAdView: ${e.message}")
         }
     }
 
@@ -848,14 +848,14 @@ class NativeAd(
             }
 
             override fun onAdLoadingCompleted() = onMainThread {
-                Log.d("ExitNative", "Monetization :- onExitNativeLoaded: Admob")
+                AdsLog.d("ExitNative", "Monetization :- onExitNativeLoaded: Admob")
                 context.showToast("Exit native ad loaded")
                 emit(adUnitId, AdEvent.LOAD_SUCCESS)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "ExitNative")
             }
 
             override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                Log.d("ExitNative", "Monetization :- onExitNativeAdFailedToLoad() " + adError.message)
+                AdsLog.d("ExitNative", "Monetization :- onExitNativeAdFailedToLoad() " + adError.message)
                 context.showToast("Failed to load exit native ad")
                 emit(adUnitId, AdEvent.LOAD_FAILURE, adError.message)
                 onSuccessListener?.onSuccess(false, null)

@@ -12,11 +12,13 @@
 -->
 <resources>
 
-    <!-- Type scale. Five steps, assigned by role: headline, body, CTA, metadata, badge. -->
-    <dimen name="ad_text_headline">16sp</dimen>
-    <dimen name="ad_text_body">14sp</dimen>
-    <dimen name="ad_text_cta">14sp</dimen>
-    <dimen name="ad_text_meta">12sp</dimen>
+    <!-- Type scale. Five steps, assigned by role: headline, body, CTA, metadata, badge.
+         Compact on purpose: native slots sit inside app content, so the previous 16/14 step
+         read like a second title bar. -->
+    <dimen name="ad_text_headline">13sp</dimen>
+    <dimen name="ad_text_body">11sp</dimen>
+    <dimen name="ad_text_cta">12sp</dimen>
+    <dimen name="ad_text_meta">10sp</dimen>
     <!-- The "Ad" attribution label. 10sp is the floor: 9sp was in use and is below what the
          SmallSp lint check considers legible, on a label AdMob policy requires people to read. -->
     <dimen name="ad_text_badge">10sp</dimen>

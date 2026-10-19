@@ -27,7 +27,7 @@ import com.umer_tf.ads.domain.ads.listeners.OnSuccessListener
  * ```kotlin
  * interstitialAdLoader.loadAndShowAd(
  *     activity, AD_UNIT,
- *     onAdFailedToShow = { reason -> Log.w(TAG, "no interstitial: $reason") },
+ *     onAdFailedToShow = { reason -> AdsLog.w(TAG, "no interstitial: $reason") },
  *     onAdDismissed = { goToNextScreen() }
  * )
  * ```

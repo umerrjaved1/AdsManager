@@ -2,7 +2,7 @@ package com.umer_tf.ads.domain.ads.rewarded
 
 import android.app.Activity
 import android.content.Context
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import androidx.annotation.MainThread
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
@@ -80,7 +80,7 @@ class RewardedAdLoader(
         val adRequest = AdRequest.Builder(adUnitId).build()
         RewardedAd.load(adRequest, object : AdLoadCallback<RewardedAd> {
             override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
-                Log.d(TAG, "Monetization :- onRewardAdFailed: ${adError.message}")
+                AdsLog.d(TAG, "Monetization :- onRewardAdFailed: ${adError.message}")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "rewarded_ad")
                 onLoaded?.onSuccess(false)
             }
@@ -89,7 +89,7 @@ class RewardedAdLoader(
             // @MainThread; Next-Gen would otherwise write it from a background thread.
             override fun onAdLoaded(ad: RewardedAd) = onMainThread {
                 rewardedAd = ad
-                Log.d(TAG, "Monetization :- onRewardAdLoaded")
+                AdsLog.d(TAG, "Monetization :- onRewardAdLoaded")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "rewarded_ad")
                 onLoaded?.onSuccess(true)
             }
@@ -111,21 +111,21 @@ class RewardedAdLoader(
         ad.adEventCallback = object : RewardedAdEventCallback {
             override fun onAdShowedFullScreenContent() = onMainThread {
                 adController.shouldShowOpenAd = false
-                Log.d(TAG, "Monetization :- onAdShowedFullScreenContent")
+                AdsLog.d(TAG, "Monetization :- onAdShowedFullScreenContent")
                 AnalyticsManager.getInstance(context).sendAnalytics(SHOWING_AD, "rewarded_ad")
             }
 
             override fun onAdFailedToShowFullScreenContent(
                 fullScreenContentError: FullScreenContentError
             ) = onMainThread {
-                Log.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent")
+                AdsLog.d(TAG, "Monetization :- onAdFailedToShowFullScreenContent")
                 adController.shouldShowOpenAd = true
                 rewardedAd = null
                 onRewardEarned?.onSuccess(false)
             }
 
             override fun onAdDismissedFullScreenContent() = onMainThread {
-                Log.d(TAG, "Monetization :- onAdDismissedFullScreenContent")
+                AdsLog.d(TAG, "Monetization :- onAdDismissedFullScreenContent")
                 adController.shouldShowOpenAd = true
                 rewardedAd = null
                 onRewardEarned?.onSuccess(rewardEarned)
@@ -151,7 +151,7 @@ class RewardedAdLoader(
         // user no reward for an ad they watched. Queueing both on Main preserves the SDK's order.
         ad.show(activity, object : OnUserEarnedRewardListener {
             override fun onUserEarnedReward(reward: RewardItem) = onMainThread {
-                Log.d(TAG, "Monetization :- The user earned the reward.")
+                AdsLog.d(TAG, "Monetization :- The user earned the reward.")
                 rewardEarned = true
             }
         })
@@ -190,14 +190,14 @@ class RewardedAdLoader(
             // main-thread work that Next-Gen would otherwise hand us on a background thread.
             override fun onAdFailedToLoad(adError: LoadAdError) = onMainThread {
                 loadingDialogUtil.hideLoadingDialog()
-                Log.d(TAG, "Monetization :- onRewardAdFailed: ${adError.message}")
+                AdsLog.d(TAG, "Monetization :- onRewardAdFailed: ${adError.message}")
                 onRewardEarned?.onSuccess(false)
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "rewarded_ad")
             }
 
             override fun onAdLoaded(ad: RewardedAd) = onMainThread {
                 rewardedAd = ad
-                Log.d(TAG, "Monetization :- onRewardAdLoaded")
+                AdsLog.d(TAG, "Monetization :- onRewardAdLoaded")
                 loadingDialogUtil.hideLoadingDialog()
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "rewarded_ad")
                 showAd(activity, onRewardEarned)

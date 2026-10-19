@@ -3,7 +3,7 @@ package com.umer_tf.ads.domain.core
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import java.lang.ref.WeakReference
 
 /**
@@ -46,7 +46,7 @@ object ForegroundActivityTracker : Application.ActivityLifecycleCallbacks {
         if (installed) return
         installed = true
         application.registerActivityLifecycleCallbacks(this)
-        Log.d(TAG, "Monetization :- ForegroundActivityTracker installed")
+        AdsLog.d(TAG, "Monetization :- ForegroundActivityTracker installed")
     }
 
     /** Most recent Activity that is still usable, or null. */

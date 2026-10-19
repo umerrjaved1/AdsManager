@@ -5,7 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import androidx.annotation.MainThread
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
@@ -135,7 +135,7 @@ class InterstitialAdLoader(
         val slot = slots[adUnitId] ?: return null
         if (slot.state != AdSlotState.READY) return null
         if (slot.isExpired()) {
-            Log.d(TAG, "Monetization :- cached interstitial for $adUnitId expired")
+            AdsLog.d(TAG, "Monetization :- cached interstitial for $adUnitId expired")
             emit(adUnitId, AdEvent.AD_EXPIRED, slot.state)
             slot.ad = null
             slot.state = AdSlotState.IDLE
@@ -171,7 +171,7 @@ class InterstitialAdLoader(
         // could never load again for the rest of the session. The gate knows whether anything is
         // really on screen, so trust it over the slot.
         if (slot.state == AdSlotState.SHOWING && !FullScreenGate.isShowing()) {
-            Log.w(TAG, "Monetization :- $adUnitId stuck in SHOWING with no ad on screen - resetting")
+            AdsLog.w(TAG, "Monetization :- $adUnitId stuck in SHOWING with no ad on screen - resetting")
             slot.state = AdSlotState.IDLE
         }
 
@@ -209,7 +209,7 @@ class InterstitialAdLoader(
                     slot.ad = ad
                     slot.state = AdSlotState.READY
                     slot.loadedAtElapsed = SystemClock.elapsedRealtime()
-                    Log.d(TAG, "Monetization :- onAdLoaded ($adUnitId)")
+                    AdsLog.d(TAG, "Monetization :- onAdLoaded ($adUnitId)")
                     emit(adUnitId, AdEvent.LOAD_SUCCESS, slot.state)
                     emit(adUnitId, AdEvent.READY, slot.state)
                     AnalyticsManager.getInstance(context).sendAnalytics(AD_LOADED, "Interstitial_ad")
@@ -220,7 +220,7 @@ class InterstitialAdLoader(
                     slot.ad = null
                     slot.state = AdSlotState.FAILED
                     slot.loadedAtElapsed = 0L
-                    Log.d(TAG, "Monetization :- onAdFailedToLoad ($adUnitId): ${adError.message}")
+                    AdsLog.d(TAG, "Monetization :- onAdFailedToLoad ($adUnitId): ${adError.message}")
                     emit(adUnitId, AdEvent.LOAD_FAILURE, slot.state, adError.message)
                     AnalyticsManager.getInstance(context).sendAnalytics(AD_FAILED, "Interstitial_ad")
                     settleWaiters(slot, false)
@@ -273,7 +273,7 @@ class InterstitialAdLoader(
             if (settled) return@launch
             // The caller's wait ended; the request is still running and a late fill is kept.
             // Emitting LOAD_FAILURE here made a timeout look like a no-fill in diagnostics.
-            Log.d(TAG, "Monetization :- caller timeout after ${timeOut}ms for $adUnitId — request continues")
+            AdsLog.d(TAG, "Monetization :- caller timeout after ${timeOut}ms for $adUnitId — request continues")
             once.onSuccess(false)
         }
     }
@@ -356,7 +356,7 @@ class InterstitialAdLoader(
                 slot.state = AdSlotState.SHOWING
                 slot.loadedAtElapsed = 0L
                 emit(adUnitId, AdEvent.SHOW_STARTED, slot.state)
-                Log.d(TAG, "Monetization :- shown on ${activity.javaClass.simpleName}")
+                AdsLog.d(TAG, "Monetization :- shown on ${activity.javaClass.simpleName}")
                 AnalyticsManager.getInstance(context).sendAnalytics(AD_SHOWN, "Interstitial_ad")
                 AnalyticsManager.getInstance(context).sendAnalytics(SHOWING_AD, "Interstitial_ad")
             }
@@ -382,7 +382,7 @@ class InterstitialAdLoader(
                 slot.state = AdSlotState.IDLE
                 slot.loadedAtElapsed = 0L
                 emit(adUnitId, AdEvent.SHOW_FAILED, slot.state, fullScreenContentError.message)
-                Log.d(
+                AdsLog.d(
                     TAG,
                     "Monetization :- onAdFailedToShowFullScreenContent: ${fullScreenContentError.message}"
                 )
@@ -414,7 +414,7 @@ class InterstitialAdLoader(
             ad.show(activity)
             true
         } catch (t: Throwable) {
-            Log.e(TAG, "Monetization :- show() threw for $adUnitId", t)
+            AdsLog.e(TAG, "Monetization :- show() threw for $adUnitId", t)
             releaseGate()
             slot.ad = null
             slot.state = AdSlotState.IDLE
@@ -481,7 +481,7 @@ class InterstitialAdLoader(
             )
             return
         }
-        Log.d(
+        AdsLog.d(
             TAG,
             "Monetization :- showAdWithTimeAndCounter: mInterstitialAdCounter: $mInterstitialAdCounter"
         )
@@ -581,7 +581,7 @@ class InterstitialAdLoader(
                 }, adShowDelay)
             }
         }.getOrElse {
-            Log.e(TAG, "Monetization :- loadAndShowInterstitialAd: Exception-> $it")
+            AdsLog.e(TAG, "Monetization :- loadAndShowInterstitialAd: Exception-> $it")
             onSuccessListener?.onSuccess(false)
             outcome.failed("loadAndShowAd threw ${it.javaClass.simpleName}: ${it.message}")
         }
@@ -595,7 +595,7 @@ class InterstitialAdLoader(
         val adCounterMet = mInterstitialAdCounter >= adController.interstitialCounter
         val minTimeMet = elapsedTime >= adController.interstitialAdMinTime
         val maxTimeMet = elapsedTime >= adController.interstitialAdMaxTime
-        Log.d(
+        AdsLog.d(
             TAG,
             "Monetization :- shouldShowInterstitialAd: counter=$mInterstitialAdCounter, elapsed=$elapsedTime, counterMet=$adCounterMet, minMet=$minTimeMet, maxMet=$maxTimeMet"
         )

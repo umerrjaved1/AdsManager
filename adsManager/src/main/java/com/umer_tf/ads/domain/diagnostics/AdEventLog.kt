@@ -1,7 +1,7 @@
 package com.umer_tf.ads.domain.diagnostics
 
 import android.os.SystemClock
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import com.umer_tf.ads.domain.core.AdSlotState
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -238,7 +238,7 @@ object AdEventLog {
     ) {
         counts.getOrPut("${format.name}|${event.name}") { AtomicInteger() }.incrementAndGet()
         if (verboseLogging) {
-            Log.d(TAG, "Monetization :- ${describe(format, adUnitId, event, reason)}")
+            AdsLog.d(TAG, "Monetization :- ${describe(format, adUnitId, event, reason)}")
         }
         if (simpleLogging) {
             logSimple(format, adUnitId, event, reason)
@@ -256,7 +256,7 @@ object AdEventLog {
         listeners.forEach { listener ->
             // A misbehaving host listener must never break ad delivery.
             runCatching { listener.onAdEvent(record) }
-                .onFailure { Log.w(TAG, "Ad event listener threw", it) }
+                .onFailure { AdsLog.w(TAG, "Ad event listener threw", it) }
         }
     }
 
@@ -323,7 +323,7 @@ object AdEventLog {
                 append(it)
             }
         }
-        Log.d(simpleLogTag, line)
+        AdsLog.d(simpleLogTag, line)
     }
 
     /** `inter   splash          loaded     · 10.2s` */
@@ -399,7 +399,7 @@ object AdEventLog {
 
         val lossEvents = AdEvent.values().filter { it.isLoss }
 
-        Log.d(TAG, "Monetization :- ======== AD FUNNEL (this session) ========")
+        AdsLog.d(TAG, "Monetization :- ======== AD FUNNEL (this session) ========")
         AdFormat.values().forEach { format ->
             val requested = n(format, AdEvent.REQUEST_STARTED)
             // Every fill path emits LOAD_SUCCESS exactly once, so this is a straight count.
@@ -416,7 +416,7 @@ object AdEventLog {
             // report as LOST 0 while `filled` sat well above `shown` on the same line.
             val unshown = (filled - shown - lost).coerceAtLeast(0)
             if (requested == 0 && filled == 0 && shown == 0 && saved == 0) return@forEach
-            Log.d(
+            AdsLog.d(
                 TAG,
                 "Monetization :- ${format.short}  req $requested   fill $filled   " +
                     "shown $shown   nofill $noFill   LOST $lost   UNSHOWN $unshown   saved $saved"
@@ -424,18 +424,18 @@ object AdEventLog {
         }
         val anyLoss = AdFormat.values().any { f -> lossEvents.any { n(f, it) > 0 } }
         if (anyLoss) {
-            Log.d(TAG, "Monetization :- -- where they were lost --")
+            AdsLog.d(TAG, "Monetization :- -- where they were lost --")
             AdFormat.values().forEach { format ->
                 lossEvents.forEach { event ->
                     val c = n(format, event)
                     if (c > 0) {
                         val why = event.why?.let { " ($it)" } ?: ""
-                        Log.d(TAG, "Monetization :- ${format.short}  ${event.plain}$why x$c")
+                        AdsLog.d(TAG, "Monetization :- ${format.short}  ${event.plain}$why x$c")
                     }
                 }
             }
         }
-        Log.d(TAG, "Monetization :- ==========================================")
+        AdsLog.d(TAG, "Monetization :- ==========================================")
     }
 
     @JvmStatic

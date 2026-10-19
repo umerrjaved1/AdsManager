@@ -3,7 +3,7 @@ package com.umer_tf.ads.domain.ads.app_open
 import android.app.Activity
 import android.app.Application
 import android.content.Context
-import android.util.Log
+import com.umer_tf.ads.domain.utils.AdsLog
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -221,7 +221,7 @@ class AppOpenAdLoader(
         startTime = 0L
         // Remove ProcessLifecycleObserver to prevent memory leaks
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
-        Log.d(TAG, "Monetization :- OpenAd - destroyAds.")
+        AdsLog.d(TAG, "Monetization :- OpenAd - destroyAds.")
     }
 
     override fun isStartAdAvailable(): Boolean {
@@ -236,7 +236,7 @@ class AppOpenAdLoader(
      * based on timing, user preferences, and app state.
      */
     private fun handleAppResume() {
-        Log.d(TAG, "Monetization :- OpenAd -> OnResume")
+        AdsLog.d(TAG, "Monetization :- OpenAd -> OnResume")
         if (isPremium || !adController.shouldShowOpenAd || !adController.shouldShowResumeAd) {
             return
         }
@@ -270,7 +270,7 @@ class AppOpenAdLoader(
             it.isAssignableFrom(activity.javaClass)
         }
         if (excluded) {
-            Log.d(TAG, "Monetization :- OpenAd - excluded for ${activity.javaClass.simpleName}")
+            AdsLog.d(TAG, "Monetization :- OpenAd - excluded for ${activity.javaClass.simpleName}")
         }
         return excluded
     }
@@ -297,7 +297,7 @@ class AppOpenAdLoader(
                     // the branch below - unreachable whenever openAdResumeTime is 0 - and was
                     // never refilled after a show, so resume ads effectively never appeared.
                     if (!resumeAdManager.isAdAvailable()) {
-                        Log.d(TAG, "Monetization :- OpenAd Resume - preloading for the next resume")
+                        AdsLog.d(TAG, "Monetization :- OpenAd Resume - preloading for the next resume")
                         loadResumeAd(activity, null)
                     }
                 }
@@ -316,7 +316,7 @@ class AppOpenAdLoader(
      * This timestamp is used to calculate the background duration for resume ad logic.
      */
     private fun handleAppPause() {
-        Log.d(TAG, "Monetization :- OpenAd -TimeManager Resume App paused at ${System.currentTimeMillis()}")
+        AdsLog.d(TAG, "Monetization :- OpenAd -TimeManager Resume App paused at ${System.currentTimeMillis()}")
         startTime = System.currentTimeMillis()
     }
 
@@ -329,9 +329,9 @@ class AppOpenAdLoader(
      * @param remoteTimer The configured remote timer value
      */
     private fun logResumeTiming(startTime: Long, currentTime: Long, diff: Long, remoteTimer: Long) {
-        Log.d(TAG, "Monetization :- OpenAd - TimeManager Resume startTime sec: $startTime")
-        Log.d(TAG, "Monetization :- OpenAd - TimeManager Resume backTime sec: $currentTime")
-        Log.d(TAG, "Monetization :- OpenAd - TimeManager Resume backTime diff: $diff")
-        Log.d(TAG, "Monetization :- OpenAd - TimeManager Resume Remote diff: $remoteTimer")
+        AdsLog.d(TAG, "Monetization :- OpenAd - TimeManager Resume startTime sec: $startTime")
+        AdsLog.d(TAG, "Monetization :- OpenAd - TimeManager Resume backTime sec: $currentTime")
+        AdsLog.d(TAG, "Monetization :- OpenAd - TimeManager Resume backTime diff: $diff")
+        AdsLog.d(TAG, "Monetization :- OpenAd - TimeManager Resume Remote diff: $remoteTimer")
     }
 }

@@ -6,7 +6,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.DisplayMetrics
-import android.util.Log
 import android.view.WindowMetrics
 import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
 import com.umer_tf.ads.domain.consent.AdsConsentGate
@@ -42,7 +41,7 @@ object Utilities {
             }
             return false
         } catch (e: Exception) {
-            Log.d("TAG", "isNetworkAvailable: ${e.message}")
+            AdsLog.d("TAG", "isNetworkAvailable: ${e.message}")
             return false
         }
     }
